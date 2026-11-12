@@ -534,14 +534,27 @@ function mdlNotes(){
 const mPool=sc=>(sc==='a'?S.students:inCls(cls)).slice().sort((a,b)=>a.cls.localeCompare(b.cls,'fr')||(a.last+a.first).localeCompare(b.last+b.first,'fr'));
 let mnRows=[],mnCol='',mstu=[];
 function mdlCsv(){return head('CSV Moodle','Notes d’exercices et liste des élèves au format Moodle',clsPick('Toutes les classes'))+
-  `<div class="card"><h2>Export des notes</h2><p class="sub" style="margin-bottom:12px">Une ligne par élève : user, note et feedback. Réglez la leçon et les élèves dans l’onglet « Sélection & Notes ».</p><div class="row"><label>Classes<select id="ms1"><option value="c">Classe choisie (ou toutes si aucune)</option><option value="a">Toutes les classes</option></select></label><button class="btn acc" onclick="mnGen()">Générer l’aperçu</button></div><div id="mnBox" style="margin-top:12px"></div></div>`+
+  `<div class="card"><h2>Export des notes</h2><p class="sub" style="margin-bottom:12px">Une ligne par élève : user, note et feedback. Choisissez les exercices (réglés dans « Sélection & Notes ») ou un devoir / une évaluation (DM, DS, contrôle, examen…).</p><div class="row"><label>Source des notes<select id="ms0">${mnSrcOpts()}</select></label><label>Classes<select id="ms1"><option value="c">Classe choisie (ou toutes si aucune)</option><option value="a">Toutes les classes</option></select></label><label>Élèves sans note<select id="ms5"><option value="skip">Ne pas inclure</option><option value="zero">Inclure avec note 0</option></select></label><label>Feedback « sans note »<input id="ms6" value="Absent(e) : devoir non rendu" style="min-width:230px"></label><button class="btn acc" onclick="mnGen()">Générer l’aperçu</button></div><div id="mnBox" style="margin-top:12px"></div></div>`+
   `<div class="card"><h2>Export des élèves</h2><p class="sub" style="margin-bottom:12px">Nom en MAJUSCULES, prénom avec majuscule, username modifiable. Les doublons sont détectés en direct.</p><div class="row"><label>Classes<select id="ms2"><option value="c">Classe choisie (ou toutes si aucune)</option><option value="a">Toutes les classes</option></select></label><label>Suffixe du mot de passe<input id="ms3" value="@12345" style="width:110px"></label><label>Date d’inscription<input type="date" id="ms4" value="${today()}"></label><button class="btn acc" onclick="mstuGen()">Générer l’aperçu</button></div><div id="mstuBox" style="margin-top:12px"></div></div>`}
-function mnGen(){const m=M();if(!m.lesson.trim())return toast('Saisissez la leçon dans « Sélection & Notes »');
-  const L=mPool($('#ms1').value);if(!L.length)return toast('Aucun élève');
-  mnCol='Les exercices sur '+m.lesson.trim();
-  mnRows=L.map(s=>{const no=m.nodone[s.id],raw=no?m.notN[s.id]:m.doneN[s.id],note=(raw===undefined||raw===''||raw===null)?(no?m.defNot:m.defDone):raw;return{user:s.user||udef(s),cls:s.cls,no,note,fb:no?(m.notDoneFb.trim()||'Les exercices n’ont pas été réalisés.'):(m.doneFb.trim()||'Exercices réalisés.')}});
-  $('#mnBox').innerHTML=`<div class="tw"><table><thead><tr><th>user</th><th>Classe</th><th>Statut</th><th>${esc(mnCol)}</th><th>feedbacks</th></tr></thead><tbody>${mnRows.map(r=>`<tr><td>${esc(r.user)}</td><td><span class="pill cl">${esc(r.cls)}</span></td><td class="${r.no?'bad':'ok'}">${r.no?'Pas fait':'A fait'}</td><td>${esc(r.note)}</td><td>${esc(r.fb)}</td></tr>`).join('')}</tbody></table></div><div style="margin-top:12px"><button class="btn acc" onclick="mnDl()">Télécharger le CSV</button></div>`;toast('Aperçu : '+mnRows.length+' ligne(s)')}
-function mnDl(){if(!mnRows.length)return;dl('moodle_notes_'+slugF(M().lesson)+'.csv','\uFEFFuser,'+qc(mnCol)+',feedbacks\n'+mnRows.map(r=>qc(r.user)+','+qc(r.note)+','+qc(r.fb)).join('\n')+'\n')}
+const mnSrcOpts=()=>'<option value="ex">📝 Exercices (Sélection & Notes)</option>'+(S.assign.length?'<optgroup label="Devoirs et évaluations">'+S.assign.slice().sort((a,b)=>(b.given||b.due||'').localeCompare(a.given||a.due||'')).map(a=>`<option value="a:${esc(a.id)}">${esc(TN[a.type]||a.type)} · ${esc(a.title)} (${a.cls==='toutes'?'toutes les classes':esc(a.cls)})${a.archived?' [archivé]':''}</option>`).join('')+'</optgroup>':'');
+let mnName='';
+function mnGen(){const m=M(),src=$('#ms0')?$('#ms0').value:'ex';
+  let L=mPool($('#ms1').value);
+  if(src==='ex'){
+    if(!m.lesson.trim())return toast('Saisissez la leçon dans « Sélection & Notes »');
+    if(!L.length)return toast('Aucun élève');
+    mnCol='Les exercices sur '+m.lesson.trim();mnName=m.lesson;
+    mnRows=L.map(s=>{const no=m.nodone[s.id],raw=no?m.notN[s.id]:m.doneN[s.id],note=(raw===undefined||raw===''||raw===null)?(no?m.defNot:m.defDone):raw;return{user:s.user||udef(s),cls:s.cls,no,st:no?'Pas fait':'A fait',note,fb:no?(m.notDoneFb.trim()||'Les exercices n’ont pas été réalisés.'):(m.doneFb.trim()||'Exercices réalisés.')}});
+  }else{
+    const a=S.assign.find(x=>x.id===src.slice(2));if(!a)return toast('Évaluation introuvable');
+    L=L.filter(s=>a.cls==='toutes'||a.cls===s.cls);if(!L.length)return toast('Aucun élève concerné par cette évaluation dans la sélection de classes');
+    const blank=$('#ms5').value==='zero',nfb=($('#ms6').value||'').trim()||'Absent(e) : devoir non rendu';
+    mnCol=a.title;mnName=a.title;
+    mnRows=L.filter(s=>blank||S.grades[a.id+'_'+s.id]!==undefined).map(s=>{const g=S.grades[a.id+'_'+s.id],has=g!==undefined;return{user:s.user||udef(s),cls:s.cls,no:!has,st:has?'Noté':'Sans note',note:has?g:0,fb:has?cmtOf(a,s):nfb}});
+    if(!mnRows.length)return toast('Aucune note saisie pour cette évaluation');
+  }
+  $('#mnBox').innerHTML=`<div class="tw"><table><thead><tr><th>user</th><th>Classe</th><th>Statut</th><th>${esc(mnCol)}</th><th>feedbacks</th></tr></thead><tbody>${mnRows.map(r=>`<tr><td>${esc(r.user)}</td><td><span class="pill cl">${esc(r.cls)}</span></td><td class="${r.no?'bad':'ok'}">${r.st}</td><td>${esc(r.note)}</td><td>${esc(r.fb)}</td></tr>`).join('')}</tbody></table></div><div style="margin-top:12px"><button class="btn acc" onclick="mnDl()">Télécharger le CSV</button></div>`;toast('Aperçu : '+mnRows.length+' ligne(s)')}
+function mnDl(){if(!mnRows.length)return;dl('moodle_notes_'+slugF(mnName)+'.csv','\uFEFFuser,'+qc(mnCol)+',feedbacks\n'+mnRows.map(r=>qc(r.user)+','+qc(r.note)+','+qc(r.fb)).join('\n')+'\n')}
 const fPren=p=>String(p||'').trim().toLowerCase().split(' ').filter(Boolean).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ');
 const pwdOf=(s,suf)=>{const n=slug(s.last);return n?n.charAt(0).toUpperCase()+n.slice(1)+suf:'Password'+suf};
 const mc=(i,f,t,x)=>`<td><input type="${t||'text'}" ${x||''} value="${esc(mstu[i][f])}" oninput="mstuSet(${i},'${f}',this.value)" style="min-width:${t==='date'?140:110}px"></td>`;
