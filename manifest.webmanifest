@@ -1,5 +1,4 @@
 {
-  "id": "./",
   "name": "EduManager — Gestion scolaire",
   "short_name": "EduManager",
   "description": "Gestion scolaire pour enseignants : élèves, présences, devoirs, notes, calendrier et exports.",
@@ -33,5 +32,6 @@
       "type": "image/png",
       "purpose": "maskable"
     }
-  ]
+  ],
+  "prefer_related_applications": false
 }

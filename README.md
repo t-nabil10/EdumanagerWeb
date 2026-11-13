@@ -24,6 +24,15 @@ Ne mettez jamais d'élèves, de notes ni de token dans ce dépôt public : l'app
 L'onglet **Export / Import** de l'application affiche aussi ces instructions et un bouton « Installer » quand l'appareil le permet.
 Ouvrez l'application une première fois avec Internet : les bibliothèques Excel, PDF et ZIP sont alors mémorisées pour le mode hors connexion.
 
+## Android : « Impossible d'ouvrir l'application »
+
+1. Désinstallez l'ancienne icône (appui long, Désinstaller).
+2. Chrome : ⋮ → Paramètres → Paramètres des sites → Stockage → supprimez les données de `github.io`.
+3. Rouvrez l'adresse dans **Chrome** (pas dans WhatsApp, Facebook ou Telegram), puis ⋮ → **Installer l'application**.
+4. Solution de secours : ⋮ → **Ajouter à l'écran d'accueil** → *Ajouter* (raccourci qui s'ouvre dans Chrome).
+
+Pour vérifier l'installabilité depuis un PC : ouvrez l'adresse dans Chrome, F12 → onglet **Application** → **Manifest** : la section *Installability* liste les erreurs éventuelles.
+
 ## 3. Mettre à jour
 
 Remplacez `index.html` dans le dépôt (**Add file → Upload files**, même nom). À la prochaine ouverture avec Internet, la nouvelle version est chargée.

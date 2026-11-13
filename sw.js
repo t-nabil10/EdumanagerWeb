@@ -1,5 +1,5 @@
 /* EduManager — service worker : fonctionne hors connexion après la première visite. */
-const V='edumanager-v2';
+const V='edumanager-v3';
 const CORE=['./','index.html','manifest.webmanifest','icons/icon-192.png','icons/icon-512.png','icons/apple-touch-icon.png','icons/favicon-32.png','icons/favicon.svg'];
 const CDN=[
   'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
