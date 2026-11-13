@@ -621,7 +621,7 @@ function ttCard(){
   const dw=new Date().getDay()||7,cur=sessState().cur,days=[1,2,3,4,5,6,7].filter(d=>d<7||TT().some(x=>x.day===7)),cl=classes();
   return `<div class="card"><h2>Emploi du temps</h2><p class="sub" style="margin-bottom:12px">Ajoutez vos classes et leurs horaires. Pendant une séance, l’onglet Présences choisit automatiquement la classe. Aucune séance n’est proposée les jours de vacances ou fériés du calendrier. Les classes proposées viennent de l’onglet Élèves.</p>`+
   `<div class="row" style="margin-bottom:10px">${[1,2,3,4,5,6,7].map(d=>`<label style="flex-direction:row;align-items:center;gap:4px"><input type="checkbox" class="ttd" value="${d}"> ${JN[d].slice(0,3)}</label>`).join('')}</div>`+
-  `<div class="row"><label>Début<input type="time" id="t2" value="08:00"></label><label>Fin<input type="time" id="t3" value="09:00"></label><label>Classe<select id="t4">${cl.length?'<option value="">Choisir…</option>'+cl.map(c=>`<option value="${esc(c)}"${c===ttLast?' selected':''}>${esc(c)}</option>`).join(''):'<option value="">Aucune classe : ajoutez d’abord des élèves</option>'}</select></label><button class="btn acc" onclick="addTT()">Ajouter</button></div>`+
+  `<div class="row"><label>Début<input type="time" id="t2" value="08:00"></label><label>Fin<input type="time" id="t3" value="09:00"></label><label>Classe<select id="t4">${cl.length?'<option value="">Choisir…</option>'+cl.map(c=>`<option value="${esc(c)}"${c===ttLast?' selected':''}>${esc(c)}</option>`).join(''):'<option value="">Aucune classe : ajoutez d’abord des élèves</option>'}</select></label><button class="btn acc" onclick="addTT()">Ajouter</button></div><div class="row" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)"><label>Importer (Excel ou CSV)<input type="file" accept=".xlsx,.xls,.csv,.txt" onchange="pickTT(this)"></label><button class="btn ghost" onclick="ttTpl('xlsx')">Modèle Excel</button><button class="btn ghost" onclick="ttTpl('csv')">Modèle CSV</button></div>`+
   `<div class="ttgrid" style="margin-top:14px">${days.map(d=>{const L=TT().filter(x=>x.day===d).sort((a,b)=>tmin(a.start)-tmin(b.start));return`<div class="ttcol${d===dw?' today':''}"><b>${JN[d]}</b>${L.length?L.map(x=>`<div class="tts${cur&&cur.id===x.id?' now':''}"><span>${x.start}–${x.end}</span><span class="pill cl">${esc(x.cls)}</span><button class="x" aria-label="Supprimer cette séance" onclick="delTT('${x.id}')">×</button></div>`).join(''):'<span class="sub">—</span>'}</div>`}).join('')}</div></div>`;
 }
 let ttLast='';
@@ -630,6 +630,47 @@ function addTT(){const ds=[...document.querySelectorAll('.ttd')].filter(x=>x.che
   const bad=ds.find(d=>TT().some(x=>x.day===d&&tmin(s)<tmin(x.end)&&tmin(x.start)<tmin(e)));if(bad)return toast('Chevauchement avec une autre séance le '+JN[bad].toLowerCase());
   ttLast=c;ds.forEach(d=>TT().push({id:uid(),day:d,start:s,end:e,cls:c}));save();keep();toast(ds.length+' séance(s) ajoutée(s)')}
 function delTT(id){S.tt=TT().filter(x=>x.id!==id);save();keep()}
+/* Import de l’emploi du temps (Excel / CSV) : colonnes Jour, Début, Fin, Classe */
+const fmtHM=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+function pT(v){if(typeof v==='number')return v>=0&&v<1?Math.round(v*1440):null;
+  const s=String(v==null?'':v).trim().toLowerCase(),m=s.match(/^(\d{1,2})\s*[h:.]\s*(\d{2})?\s*(?:[:.]\d{2})?\s*(am|pm)?$/);if(!m)return null;
+  let h=+m[1];const mi=+(m[2]||0);if(m[3]==='pm'&&h<12)h+=12;if(m[3]==='am'&&h===12)h=0;return h<24&&mi<60?h*60+mi:null}
+const ARD={'الاثنين':1,'الثلاثاء':2,'الاربعاء':3,'الخميس':4,'الجمعة':5,'السبت':6,'الاحد':7};
+function pDay(v){if(typeof v==='number')return Number.isInteger(v)&&v>=1&&v<=7?v:null;const t=String(v==null?'':v).trim();if(/^[1-7]$/.test(t))return+t;
+  const ar=t.replace(/[\u064B-\u065F]/g,'').replace(/[أإآ]/g,'ا').replace(/^يوم\s*/,'').trim();if(ARD[ar])return ARD[ar];
+  return{lun:1,mar:2,mer:3,jeu:4,ven:5,sam:6,dim:7,mon:1,tue:2,wed:3,thu:4,fri:5,sat:6,sun:7}[norm(t).replace(/[^a-z]/g,'').slice(0,3)]||null}
+function ttParse(a){a=a.filter(r=>r.some(c=>cell(c)!==''));if(!a.length)return[];
+  const h=a[0].map(norm);let i=[h.findIndex(x=>x.startsWith('jour')||x==='day'),h.findIndex(x=>x.startsWith('debut')||x==='start'),h.findIndex(x=>x==='fin'||x==='end'),h.findIndex(x=>x.startsWith('class'))],body,off;
+  if(i.every(x=>x>=0)){body=a.slice(1);off=2}else{i=[0,1,2,3];const first=pDay(a[0][0])==null&&pT(a[0][1])==null;body=first?a.slice(1):a;off=first?2:1}
+  return body.map((r,n)=>{const day=pDay(r[i[0]]),s=pT(r[i[1]]),e=pT(r[i[2]]),c=cell(r[i[3]]),o={line:n+off,day,s,e,c};
+    o.err=day==null?'jour non reconnu':s==null?'heure de début illisible':e==null?'heure de fin illisible':e<=s?'la fin doit suivre le début':!c?'classe manquante':'';return o})}
+let ttRaw=[],ttPend={ok:[],rep:false};
+function ttTpl(kind){const cl=classes(),c1=cl[0]||'CM1 A',c2=cl[1]||cl[0]||'CM1 B',rows=[['Jour','Début','Fin','Classe'],['Lundi','08:00','09:00',c1],['Lundi','09:00','10:00',c2],['Mardi','10:00','11:00',c1],['Mercredi','08:00','09:00',c2],['Jeudi','11:00','12:00',c1],['Samedi','09:00','10:00',c2]];
+  if(kind==='csv')return dl('modele-emploi-du-temps.csv',csvOut(rows));
+  if(typeof XLSX==='undefined')return toast('Lecteur Excel non chargé : utilisez le modèle CSV');
+  const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:12},{wch:8},{wch:8},{wch:14}];const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Emploi du temps');dl('modele-emploi-du-temps.xlsx',XLSX.write(wb,{bookType:'xlsx',type:'array'}))}
+function pickTT(inp){const f=inp.files[0];inp.value='';if(!f)return;const csv=/\.(csv|txt)$/i.test(f.name),r=new FileReader();
+  if(!csv&&typeof XLSX==='undefined')return toast('Lecteur Excel non chargé : utilisez un CSV');
+  r.onload=()=>{try{let a;if(csv)a=csvRows(r.result);else{const wb=XLSX.read(r.result,{type:'array'});a=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:''})}
+    ttRaw=ttParse(a);ttPrev(false)}catch(e){toast('Fichier illisible : partez du modèle')}};
+  csv?r.readAsText(f):r.readAsArrayBuffer(f)}
+function ttPrev(rep){
+  const base=rep?[]:TT().map(x=>({day:x.day,s:tmin(x.start),e:tmin(x.end),c:x.cls})),ok=[],bad=[];let dup=0;
+  ttRaw.forEach(r=>{if(r.err){bad.push(r);return}
+    if(base.some(x=>x.day===r.day&&x.s===r.s&&x.e===r.e&&x.c===r.c)){dup++;return}
+    if(base.some(x=>x.day===r.day&&r.s<x.e&&x.s<r.e)){bad.push(Object.assign({},r,{err:'chevauche une autre séance'}));return}
+    base.push(r);ok.push(r)});
+  ttPend={ok,rep};const unk=[...new Set(ok.map(r=>r.c))].filter(c=>!classes().includes(c)),srt=ok.slice().sort((a,b)=>a.day-b.day||a.s-b.s);
+  $('#dlg').innerHTML=`<h2>Aperçu de l’emploi du temps</h2>`+
+  (ttRaw.length?`<p><b>${ok.length}</b> séance(s) à ajouter.</p>`:'<p class="empty">Aucune ligne trouvée. Vérifiez les colonnes Jour, Début, Fin, Classe.</p>')+
+  (dup?`<p class="warn">${dup} doublon(s) ignoré(s).</p>`:'')+
+  (bad.length?`<p class="bad">${bad.length} ligne(s) ignorée(s) :</p><ul style="margin:0 0 10px;padding-left:20px">${bad.slice(0,6).map(b=>`<li>ligne ${b.line} : ${esc(b.err)}</li>`).join('')}${bad.length>6?'<li>…</li>':''}</ul>`:'')+
+  (unk.length?`<p class="warn">Classe(s) absente(s) de l’onglet Élèves : ${unk.map(esc).join(', ')}. Les séances seront ajoutées, mais Présences n’affichera aucun élève tant que ces classes n’existent pas.</p>`:'')+
+  (srt.length?`<div class="tw" style="max-height:34vh;overflow:auto"><table><thead><tr><th>Jour</th><th>Horaire</th><th>Classe</th></tr></thead><tbody>${srt.slice(0,14).map(r=>`<tr><td>${JN[r.day]}</td><td>${fmtHM(r.s)}–${fmtHM(r.e)}</td><td>${esc(r.c)}</td></tr>`).join('')}</tbody></table></div>${srt.length>14?`<p class="sub">… et ${srt.length-14} autre(s)</p>`:''}`:'')+
+  (TT().length?`<label style="flex-direction:row;align-items:center;gap:8px;margin-top:12px"><input type="checkbox" ${rep?'checked':''} onchange="ttPrev(this.checked)">Remplacer l’emploi du temps actuel (${TT().length} séance(s))</label>`:'')+
+  `<div style="text-align:right;margin-top:14px;display:flex;gap:8px;justify-content:flex-end"><button class="btn ghost" onclick="closeD()">Annuler</button>${ok.length?`<button class="btn acc" onclick="doTT()">Importer ${ok.length} séance(s)</button>`:''}</div>`;
+  const d=$('#dlg');if(!d.open)d.showModal()}
+function doTT(){if(ttPend.rep)S.tt=[];ttPend.ok.forEach(r=>TT().push({id:uid(),day:r.day,start:fmtHM(r.s),end:fmtHM(r.e),cls:r.c}));const n=ttPend.ok.length;ttPend={ok:[],rep:false};save();closeD();toast(n+' séance(s) importée(s)')}
 /* ===== Installation (PWA) ===== */
 let dip=null;
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();dip=e;if(view==='data')render()});
