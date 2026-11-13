@@ -1,5 +1,5 @@
 /* EduManager — service worker : fonctionne hors connexion après la première visite. */
-const V='edumanager-v1';
+const V='edumanager-v2';
 const CORE=['./','index.html','manifest.webmanifest','icons/icon-192.png','icons/icon-512.png','icons/apple-touch-icon.png','icons/favicon-32.png','icons/favicon.svg'];
 const CDN=[
   'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
@@ -22,12 +22,22 @@ self.addEventListener('activate',e=>{e.waitUntil((async()=>{
 self.addEventListener('fetch',e=>{
   const r=e.request,u=new URL(r.url);
   if(r.method!=='GET'||u.hostname==='api.github.com')return;           /* jamais de cache pour l'API GitHub */
-  if(r.mode==='navigate'){                                              /* page : réseau d'abord, cache si hors ligne */
-    e.respondWith(fetch(r).then(x=>{const k=x.clone();caches.open(V).then(c=>c.put('index.html',k));return x}).catch(()=>caches.match('index.html')));
-    return;
-  }
+  if(r.mode==='navigate'){e.respondWith(nav(r));return}                 /* page : réseau d'abord, cache si hors ligne */
   e.respondWith(caches.match(r).then(m=>m||fetch(r).then(x=>{               /* reste : cache d'abord, puis réseau */
     if(x&&(x.ok||x.type==='opaque')){const k=x.clone();caches.open(V).then(c=>c.put(r,k))}
     return x;
   })));
 });
+
+/* Ouverture de l'application : ne jamais renvoyer d'erreur (Android lance parfois l'app avant que le réseau soit prêt). */
+async function nav(r){
+  try{
+    const x=await fetch(r);
+    if(x&&x.ok&&!x.redirected&&x.type==='basic'){const k=x.clone();caches.open(V).then(c=>c.put('index.html',k))}
+    return x;
+  }catch(err){
+    return (await caches.match('index.html'))||(await caches.match('./'))||new Response(
+      '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EduManager</title><body style="font-family:system-ui;padding:24px;background:#10302f;color:#fff"><h2>Hors connexion</h2><p>Ouvrez l\u2019application une première fois avec Internet : elle fonctionnera ensuite sans connexion.</p></body>',
+      {status:200,headers:{'Content-Type':'text/html; charset=utf-8'}});
+  }
+}
