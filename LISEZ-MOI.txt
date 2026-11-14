@@ -1,0 +1,27 @@
+EduManager - version Android / PWA (installable depuis Chrome)
+
+CONTENU : index.html, manifest.json, sw.js (service worker), icon-192/512.png,
+icon-maskable-192/512.png, apple-touch-icon.png.  Tout doit rester dans le MEME dossier.
+
+POURQUOI "IMPOSSIBLE D'OUVRIR" ?
+Une PWA ne fonctionne que servie en HTTPS (ou localhost). Ouvrir index.html depuis le dossier
+Telechargements d'Android (file:// ou content://) ne marche pas : pas de service worker,
+stockage bloque, pas d'installation.
+
+HEBERGEMENT GRATUIT (GitHub Pages) :
+1) Creer un depot GitHub (ex. edumanager), y envoyer TOUS les fichiers a la racine.
+2) Settings > Pages > Source : "Deploy from a branch" > main / (root) > Save.
+3) Attendre 1-2 min : l'adresse sera https://VOTRE-NOM.github.io/edumanager/
+4) Sur Android, ouvrir cette adresse dans Chrome > menu (3 points) > "Installer l'application"
+   (ou "Ajouter a l'ecran d'accueil"). L'icone EduManager apparait comme une vraie application.
+
+DONNEES
+Les donnees sont locales a chaque appareil/navigateur (localStorage). Pour transferer du PC vers le
+telephone : onglet "Export / Import" (sauvegarde) ou la sauvegarde GitHub integree.
+
+MISES A JOUR
+Changer index.html, puis dans sw.js incrementer  const V = 'edumanager-v1'  (v2, v3...) pour que
+les telephones rechargent la nouvelle version.
+
+NOTIFICATIONS
+Sous Android, les rappels passent par le service worker (new Notification() est interdit sur mobile).

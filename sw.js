@@ -1,43 +1,37 @@
-/* EduManager — service worker : fonctionne hors connexion après la première visite. */
-const V='edumanager-v3';
-const CORE=['./','index.html','manifest.webmanifest','icons/icon-192.png','icons/icon-512.png','icons/apple-touch-icon.png','icons/favicon-32.png','icons/favicon.svg'];
-const CDN=[
-  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'
-];
-self.addEventListener('install',e=>{e.waitUntil((async()=>{
-  const c=await caches.open(V);
-  await c.addAll(CORE);
-  /* bibliothèques Excel / PDF / ZIP : mises en cache pour le mode hors connexion (échec toléré) */
-  await Promise.all(CDN.map(u=>c.add(new Request(u,{mode:'no-cors'})).catch(()=>{})));
-  await self.skipWaiting();
-})())});
-self.addEventListener('activate',e=>{e.waitUntil((async()=>{
-  for(const k of await caches.keys())if(k!==V)await caches.delete(k);
-  await self.clients.claim();
-})())});
-self.addEventListener('fetch',e=>{
-  const r=e.request,u=new URL(r.url);
-  if(r.method!=='GET'||u.hostname==='api.github.com')return;           /* jamais de cache pour l'API GitHub */
-  if(r.mode==='navigate'){e.respondWith(nav(r));return}                 /* page : réseau d'abord, cache si hors ligne */
-  e.respondWith(caches.match(r).then(m=>m||fetch(r).then(x=>{               /* reste : cache d'abord, puis réseau */
-    if(x&&(x.ok||x.type==='opaque')){const k=x.clone();caches.open(V).then(c=>c.put(r,k))}
-    return x;
-  })));
-});
+const V = 'edumanager-v1';
+const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png',
+  './icon-maskable-192.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 
-/* Ouverture de l'application : ne jamais renvoyer d'erreur (Android lance parfois l'app avant que le réseau soit prêt). */
-async function nav(r){
-  try{
-    const x=await fetch(r);
-    if(x&&x.ok&&!x.redirected&&x.type==='basic'){const k=x.clone();caches.open(V).then(c=>c.put('index.html',k))}
-    return x;
-  }catch(err){
-    return (await caches.match('index.html'))||(await caches.match('./'))||new Response(
-      '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EduManager</title><body style="font-family:system-ui;padding:24px;background:#10302f;color:#fff"><h2>Hors connexion</h2><p>Ouvrez l\u2019application une première fois avec Internet : elle fonctionnera ensuite sans connexion.</p></body>',
-      {status:200,headers:{'Content-Type':'text/html; charset=utf-8'}});
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
+});
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== V).map(k => caches.delete(k))))
+    .then(() => self.clients.claim()));
+});
+self.addEventListener('fetch', e => {
+  const r = e.request;
+  if (r.method !== 'GET') return;
+  const u = new URL(r.url);
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return;
+  if (u.hostname === 'api.github.com') return;               // sauvegarde GitHub : jamais en cache
+  if (r.mode === 'navigate') {                               // page : réseau d'abord, cache hors ligne
+    e.respondWith(fetch(r).then(res => { const c = res.clone(); caches.open(V).then(x => x.put('./index.html', c)); return res; })
+      .catch(() => caches.match('./index.html').then(m => m || caches.match('./'))));
+    return;
   }
-}
+  if (u.origin === location.origin) {                        // fichiers de l'app : cache puis mise à jour
+    e.respondWith(caches.match(r).then(m => {
+      const net = fetch(r).then(res => { if (res.ok) { const c = res.clone(); caches.open(V).then(x => x.put(r, c)); } return res; }).catch(() => m);
+      return m || net;
+    }));
+    return;
+  }
+  e.respondWith(caches.match(r).then(m => m || fetch(r).then(res => {   // bibliothèques CDN & polices : cache d'abord
+    const c = res.clone(); caches.open(V).then(x => x.put(r, c)); return res;
+  }).catch(() => m)));
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(l => l.length ? l[0].focus() : self.clients.openWindow('./index.html')));
+});
