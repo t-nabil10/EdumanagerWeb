@@ -7,7 +7,7 @@ Fonctionne dans le navigateur et s'installe comme une vraie application sur iPho
 
 1. Sur github.com, créez un dépôt **public** (ex. `edumanager`). GitHub Pages gratuit exige un dépôt public.
 2. Dans le dépôt : **Add file → Upload files**, puis glissez **le contenu** de ce dossier (pas le dossier lui-même) :
-   `index.html`, `manifest.webmanifest`, `sw.js` et le dossier `icons`. Cliquez **Commit changes**.
+   **tous les fichiers** (ils sont tous à la racine, il n'y a pas de dossier) : `index.html`, `manifest.json`, `sw.js` et les 7 images `.png` / `.svg`. Cliquez **Commit changes**.
 3. **Settings → Pages → Build and deployment** : Source = *Deploy from a branch*, Branch = `main` et dossier `/ (root)`, puis **Save**.
 4. Après 1 à 2 minutes, l'adresse est : `https://VOTRE-NOM.github.io/edumanager/`
 
@@ -31,6 +31,8 @@ Ouvrez l'application une première fois avec Internet : les bibliothèques Excel
 3. Rouvrez l'adresse dans **Chrome** (pas dans WhatsApp, Facebook ou Telegram), puis ⋮ → **Installer l'application**.
 4. Solution de secours : ⋮ → **Ajouter à l'écran d'accueil** → *Ajouter* (raccourci qui s'ouvre dans Chrome).
 
+Vérifiez que `…github.io/votre-depot/manifest.json` et `…/icon-512.png` s'ouvrent dans le navigateur (sinon un fichier n'a pas été envoyé).
+
 Pour vérifier l'installabilité depuis un PC : ouvrez l'adresse dans Chrome, F12 → onglet **Application** → **Manifest** : la section *Installability* liste les erreurs éventuelles.
 
 ## 3. Mettre à jour
@@ -52,6 +54,6 @@ Le token est stocké dans l'appareil : n'utilisez la sauvegarde cloud que sur vo
 ## Contenu du dossier
 
 - `index.html` : l'application
-- `manifest.webmanifest` : nom, couleurs et icônes de l'application installée
+- `manifest.json` : nom, couleurs et icônes de l'application installée
 - `sw.js` : mode hors connexion
-- `icons/` : icônes (192, 512, maskable, iPhone, favicon)
+- `icon-192.png`, `icon-512.png`, `icon-maskable-192.png`, `icon-maskable-512.png`, `apple-touch-icon.png`, `favicon-32.png`, `favicon.svg` : icônes

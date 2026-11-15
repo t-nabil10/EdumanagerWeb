@@ -1,8 +1,7 @@
 {
-  "id": "./index.html",
-  "name": "EduManager",
+  "name": "EduManager - Gestion scolaire",
   "short_name": "EduManager",
-  "description": "Gestion de classes : élèves, présences, devoirs, moyennes, export CSV Moodle, Excel/PDF et sauvegarde GitHub.",
+  "description": "Gestion scolaire pour enseignants : élèves, présences, devoirs, notes, calendrier et exports.",
   "lang": "fr",
   "dir": "ltr",
   "start_url": "./index.html",
@@ -11,11 +10,34 @@
   "orientation": "any",
   "background_color": "#10302f",
   "theme_color": "#10302f",
-  "categories": ["education", "productivity"],
+  "categories": [
+    "education",
+    "productivity"
+  ],
   "icons": [
-    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
-    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
-    {"src": "icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
-    {"src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }
