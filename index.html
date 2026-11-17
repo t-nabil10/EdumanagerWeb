@@ -149,7 +149,7 @@ const fmt=v=>v==null?'—':(Math.round(v*10)/10).toFixed(1);
 const activeFor=s=>S.assign.some(a=>!a.archived&&(a.cls===s.cls||a.cls==='toutes'));
 
 function nav(){
-  $('#nav').innerHTML='<div class="logo">Edu<i>Manager</i></div>'+Object.entries(VIEWS).map(([k,v])=>`<button ${k===view?'aria-current="page"':''} onclick="go('${k}')">${v}</button>`).join('')+'<div class="sp"></div><button onclick="showRem()">Rappels'+(reminders().length?' ('+reminders().length+')':'')+'</button><button onclick="theme()">Changer de thème</button>';
+  $('#nav').innerHTML='<div class="logo">Edu<i>Manager</i></div>'+Object.entries(VIEWS).map(([k,v])=>`<button ${k===view?'aria-current="page"':''} onclick="go('${k}')">${v}</button>`).join('')+'<div class="sp"></div><button onclick="showRem()">Rappels'+(reminders().length+missedCalls().length?' ('+(reminders().length+missedCalls().length)+')':'')+'</button><button onclick="theme()">Changer de thème</button>';
 }
 function theme(){const d=document.documentElement,dark=d.dataset.theme?d.dataset.theme==='dark':matchMedia('(prefers-color-scheme:dark)').matches;d.dataset.theme=dark?'light':'dark'}
 function go(v){view=v;if(v==='att'&&!noAuto)autoAtt();noAuto=false;render()}
@@ -178,9 +178,9 @@ students(){
 },
 att(){return attBar()+(attTab==='hist'?attHist():attTab==='week'?attWeek():attTab==='mon'?attMon():V.attIn())},
 attIn(){
-  const list=inCls(cls);
-  return attBanner()+head('Présences','Marquez chaque élève pour la date choisie',`<div class="row">${clsPick('Toutes les classes')}<label>Date<input type="date" value="${date}" onchange="date=this.value;render()"></label><label>Recherche<input type="search" data-rf="1" placeholder="Nom ou prénom…" oninput="rowFilter(this,'#attlist')"></label><span class="sub rc"></span><button class="btn ghost" onclick="allPres()">Tous présents</button><button class="btn ghost" onclick="pdfDay()">PDF</button></div>`)+
-  `<div class="card tw" id="attlist">${list.length?`<table><tbody>${list.map(s=>{const v=S.att[date+'_'+s.id];return`<tr data-q="${esc(norm(nmOf(s)+' '+s.cls))}"><td>${esc(s.first)} ${esc(s.last)}</td><td><span class="tag">${esc(s.cls)}</span></td><td><div class="seg">${[['present','Présent'],['absent','Absent'],['late','Retard']].map(([k,l])=>`<button data-s="${k}" class="${v===k?'on':''}" onclick="mark('${s.id}','${k}')">${l}</button>`).join('')}</div></td></tr>`}).join('')}</tbody></table>`:'<p class="empty">Aucun élève dans cette classe.</p>'}</div>`;
+  const list=inCls(cls),on=draftOn(list),dr=on?(attDraft[date+'|'+cls]||{}):null;
+  return attBanner()+draftCard(list)+head('Présences','Marquez chaque élève pour la date choisie',`<div class="row">${clsPick('Toutes les classes')}<label>Date<input type="date" value="${date}" onchange="date=this.value;render()"></label><label>Recherche<input type="search" data-rf="1" placeholder="Nom ou prénom…" oninput="rowFilter(this,'#attlist')"></label><span class="sub rc"></span><button class="btn ghost" onclick="allPres()">Tous présents</button><button class="btn ghost" onclick="pdfDay()">PDF</button></div>`)+
+  `<div class="card tw" id="attlist">${list.length?`<table><tbody>${list.map(s=>{const v=on?(dr[s.id]||'present'):S.att[date+'_'+s.id];return`<tr data-q="${esc(norm(nmOf(s)+' '+s.cls))}"><td>${esc(s.first)} ${esc(s.last)}</td><td><span class="tag">${esc(s.cls)}</span></td><td><div class="seg">${[['present','Présent'],['absent','Absent'],['late','Retard']].map(([k,l])=>`<button data-s="${k}" class="${v===k?'on':''}" onclick="mark('${s.id}','${k}')">${l}</button>`).join('')}</div></td></tr>`}).join('')}</tbody></table>${on?'<div style="margin-top:12px"><button class="btn acc" onclick="validateCall()">Valider l’appel</button></div>':''}`:'<p class="empty">Aucun élève dans cette classe.</p>'}</div>`;
 },
 work(){
   const as=[...S.assign].reverse();
@@ -217,8 +217,8 @@ data(){
 function render(){nav();$('#main').innerHTML=V[view]();if(view==='work')autoTitle();window.scrollTo(0,0)}
 function addStu(){const f=$('#f1').value.trim(),l=$('#f2').value.trim(),c=$('#f3').value.trim();if(!f||!l||!c)return toast('Renseignez prénom, nom et classe');S.students.push({id:uid(),first:f,last:l,cls:c,g:$('#f4').value,dob:$('#f5').value,created:new Date().toISOString().slice(0,10)});save();render();toast('Élève ajouté')}
 async function delStu(id){if(!await ask('Supprimer cet élève et ses notes ?','Supprimer'))return;S.students=S.students.filter(s=>s.id!==id);Object.keys(S.grades).filter(k=>k.endsWith('_'+id)).forEach(k=>delete S.grades[k]);Object.keys(S.att).filter(k=>k.endsWith('_'+id)).forEach(k=>delete S.att[k]);save();render()}
-function mark(id,v){const k=date+'_'+id;S.att[k]===v?delete S.att[k]:S.att[k]=v;save();render()}
-function allPres(){inCls(cls).forEach(s=>S.att[date+'_'+s.id]='present');save();render();toast('Tous marqués présents')}
+function mark(id,v){const list=inCls(cls);if(draftOn(list)){const dk=date+'|'+cls;(attDraft[dk]=attDraft[dk]||{})[id]=v;keep();return}const k=date+'_'+id;S.att[k]===v?delete S.att[k]:S.att[k]=v;save();render()}
+function allPres(){const list=inCls(cls);if(draftOn(list)){delete attDraft[date+'|'+cls];keep();return toast('Tous présents : validez l’appel pour enregistrer')}list.forEach(s=>S.att[date+'_'+s.id]='present');save();render();toast('Tous marqués présents')}
 function addWork(){const t=$('#w1').value.trim();if(!t)return toast('Donnez un titre à l’évaluation');const ty=$('#w2').value,same=SAME.includes(ty);S.assign.push({id:uid(),title:t,type:ty,cls:$('#w3').value,subject:$('#w4').value.trim(),given:same?'':$('#w5').value,due:same?$('#w7').value:$('#w6').value,sem:$('#w8').value,archived:false});semLast=$('#w8').value;save();render();toast('Évaluation créée')}
 function arch(id){const a=S.assign.find(x=>x.id===id);a.archived=!a.archived;save();render()}
 async function delWork(id){if(!await ask('Supprimer cette évaluation et ses notes ?','Supprimer'))return;S.assign=S.assign.filter(a=>a.id!==id);Object.keys(S.grades).filter(k=>k.startsWith(id+'_')).forEach(k=>delete S.grades[k]);Object.keys(CM()).filter(k=>k.startsWith(id+'_')).forEach(k=>{delete CM()[k];delete CMM()[k]});save();render()}
@@ -529,9 +529,16 @@ function reminders(){
 }
 const remRows=r=>r.map(x=>`<div class="watch"><div><b>${x.ic} ${esc(x.txt)}</b></div><span class="tag">${x.when}</span></div>`).join('');
 function remCard(){const r=reminders();return r.length?'<div class="card"><h2>Rappels de la semaine</h2><p class="sub" style="margin-bottom:8px">Du '+dateFr(today())+' au '+dateFr(weekEnd())+'</p>'+remRows(r)+'</div>':''}
-function showRem(){const r=reminders();$('#dlg').innerHTML=`<h2>Rappels de la semaine</h2>${r.length?remRows(r):'<p class="empty">Aucun événement prévu cette semaine.</p>'}<div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn ghost" onclick="enableNotif()">Activer les notifications du navigateur</button><button class="btn" onclick="closeD()">Fermer</button></div>`;$('#dlg').showModal()}
+function showRem(){const r=reminders();$('#dlg').innerHTML=`<h2>Rappels de la semaine</h2>${missRows()}${r.length?remRows(r):'<p class="empty">Aucun événement prévu cette semaine.</p>'}<div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn ghost" onclick="enableNotif()">Activer les notifications du navigateur</button><button class="btn" onclick="closeD()">Fermer</button></div>`;$('#dlg').showModal()}
 async function enableNotif(){if(!('Notification' in window))return toast('Notifications non prises en charge ici');try{const p=await Notification.requestPermission();toast(p==='granted'?'Notifications activées':'Notifications refusées');if(p==='granted')pushNotifs()}catch(e){toast('Notifications indisponibles dans ce contexte')}}
-function pushNotifs(){if(!('Notification' in window)||Notification.permission!=='granted')return;const r=reminders();if(!r.length)return;const w=monday();let seen={};try{seen=JSON.parse(localStorage.getItem('em_seen')||'{}')}catch(e){}if(seen.w===w)return;try{new Notification('🔔 Rappels de la semaine',{body:r.map(x=>x.ic+' '+x.txt+' — '+x.when).join('\n')})}catch(e){}try{localStorage.setItem('em_seen',JSON.stringify({w}))}catch(e){}}
+function pushNotifs(){if(!('Notification' in window)||Notification.permission!=='granted')return;
+  let seen={};try{seen=JSON.parse(localStorage.getItem('em_seen')||'{}')}catch(e){}
+  const w=monday(),r=reminders();
+  if(r.length&&seen.w!==w){try{new Notification('🔔 Rappels de la semaine',{body:r.map(x=>x.ic+' '+x.txt+' — '+x.when).join('\n')})}catch(e){}seen.w=w}
+  /* appels de présence non faits : une notification par séance passée */
+  const ms=seen.m||{},lim=addD(today(),-30);Object.keys(ms).filter(k=>k.slice(0,10)<lim).forEach(k=>delete ms[k]);
+  missedCalls().forEach(x=>{const k=x.d+'|'+x.c;if(ms[k])return;try{new Notification('⚠️ Appel de présence non fait',{body:x.c+' · '+dayLbl(x.d)+' · '+x.times.join(', ')})}catch(e){}ms[k]=1});
+  seen.m=ms;try{localStorage.setItem('em_seen',JSON.stringify(seen))}catch(e){}}
 /* ===== Sélection & Notes + CSV Moodle (comme l’application Moodle CSV) ===== */
 const M=()=>S.mdl||(S.mdl={lesson:'',doneFb:'Exercices réalisés.',notDoneFb:'Les exercices n’ont pas été réalisés.',defNot:10,defDone:0,nodone:{},doneN:{},notN:{}});
 const udef=s=>slug(s.first)+'.'+slug(s.last);
@@ -859,10 +866,17 @@ function appelCard(){const m=missedCalls();if(!m.length)return'';
 function appelLine(){const n=missedCalls().length;return n?`<p class="hl">⚠️ ${n} appel(s) de présence non fait(s)</p>`:''}
 function ignoreApp(c,d){(S.skipApp=S.skipApp||{})[d+'|'+c]=1;save();keep()}
 function goAppel(c,d){cls=c;date=d;attTab='in';noAuto=true;go('att')}
+/* Appel avec validation : tous les élèves sont présents par défaut (brouillon), on marque les absents / retards puis on valide tout */
+let attDraft={};
+const draftOn=list=>!!cls&&list.length>0&&!list.some(s=>S.att[date+'_'+s.id]);
+function draftCount(list){const dr=attDraft[date+'|'+cls]||{};let p=0,a=0,l=0;list.forEach(s=>{const v=dr[s.id]||'present';if(v==='absent')a++;else if(v==='late')l++;else p++});return{p,a,l}}
+function draftCard(list){if(!draftOn(list))return'';const c=draftCount(list);return `<div class="card" style="border-left:4px solid var(--acc)"><b>📝 Appel non validé</b> · ${esc(cls)} · ${dateFr(date)}<p class="sub" style="margin:6px 0 10px">Tous les élèves sont présents par défaut. Marquez les absents ou les retards, puis validez l’appel.</p><button class="btn acc" onclick="validateCall()">Valider l’appel (${c.p} présents · ${c.a} absents · ${c.l} retards)</button></div>`}
+function validateCall(){const list=inCls(cls);if(!draftOn(list))return;const dk=date+'|'+cls,dr=attDraft[dk]||{},c=draftCount(list);list.forEach(s=>{S.att[date+'_'+s.id]=dr[s.id]||'present'});delete attDraft[dk];save();keep();toast('Appel validé : '+c.p+' présent(s), '+c.a+' absent(s), '+c.l+' retard(s)')}
+function missRows(){const m=missedCalls();return m.length?'<h3 style="margin:8px 0 4px">Appels de présence non faits</h3>'+m.slice(0,8).map(x=>`<div class="watch"><div><b>⚠️ ${esc(x.c)}</b> <span class="sub">${dayLbl(x.d)} · ${x.times.join(', ')}</span></div><button class="btn sm acc" onclick="closeD();goAppel(${qj(x.c)},'${x.d}')">Faire l’appel</button></div>`).join('')+(m.length>8?'<p class="sub">… et '+(m.length-8)+' autre(s)</p>':''):''}
 async function reset(){if(await ask('Effacer toutes les données ?','Tout effacer')){S={students:[],assign:[],grades:{},att:{}};save();render()}}
 render();
-if(reminders().length)setTimeout(()=>toast('🔔 '+reminders().length+' rappel(s) cette semaine'),600);
-pushNotifs();setInterval(()=>{const t=today();if(t!==lastDay){lastDay=t;render();pushNotifs()}},600000);
+{const mc=missedCalls().length,rc=reminders().length;if(mc||rc)setTimeout(()=>toast((mc?'⚠️ '+mc+' appel(s) non fait(s)':'')+(mc&&rc?' · ':'')+(rc?'🔔 '+rc+' rappel(s) cette semaine':'')),600)}
+pushNotifs();setInterval(()=>{const t=today();if(t!==lastDay){lastDay=t;render()}else if(view==='dash')keep();pushNotifs()},300000);
 </script>
 </body>
 </html>
