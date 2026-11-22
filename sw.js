@@ -1,6 +1,6 @@
 /* EduManager — service worker : fichiers de l'app = réseau d'abord (mises à jour immédiates), bibliothèques CDN = cache d'abord. */
-const CACHE='edumanager-v4';
-const LOCAL=['./','./index.html','./manifest.json','./icon-192.png','./icon-512.png','./apple-touch-icon.png','./favicon-32.png'];
+const CACHE='edumanager-v5';
+const LOCAL=['./','./index.html','./manifest.json','./icon-192.png','./icon-512.png','./apple-touch-icon.png','./favicon-32.png','./favicon.svg','./icon-maskable-192.png','./icon-maskable-512.png'];
 const CDN=[
   'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js',

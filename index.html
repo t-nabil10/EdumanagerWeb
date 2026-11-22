@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>EduManager</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2310302f'/%3E%3Cpath d='M32 13 7 26l25 13 25-13z' fill='%23e9a820'/%3E%3Cpath d='M17 34v10c0 4.5 6.7 8 15 8s15-3.500 15-8V34l-15 7.500z' fill='%23e9a820' opacity='.85'/%3E%3Crect x='52' y='27' width='3.500' height='18' rx='1.700' fill='%23e9a820'/%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" sizes="any" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2310302f'/%3E%3Cpath d='M32 13 7 26l25 13 25-13z' fill='%23e9a820'/%3E%3Cpath d='M17 34v10c0 4.5 6.7 8 15 8s15-3.500 15-8V34l-15 7.500z' fill='%23e9a820' opacity='.85'/%3E%3Crect x='52' y='27' width='3.500' height='18' rx='1.700' fill='%23e9a820'/%3E%3C/svg%3E">
 <meta name="theme-color" content="#10302f">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
@@ -107,7 +107,7 @@ th{font-size:13px;color:var(--mut);font-weight:500}
 dialog{border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--txt);width:min(720px,94vw);max-height:86vh;padding:20px}
 dialog::backdrop{background:rgba(5,20,19,.55)}
 .toast{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:99px;opacity:0;pointer-events:none;transition:opacity .2s}
-.toast.show{opacity:1}
+.toast{width:max-content;max-width:92vw;text-align:center;z-index:50}.toast.show{opacity:1}.toast.act{pointer-events:auto}.toast button{font:inherit;font-weight:600;border:0;background:var(--acc);color:#10302f;border-radius:99px;padding:3px 12px;margin-left:10px;cursor:pointer}
 @media (max-width:720px){body{flex-direction:column}nav{width:100%;height:auto;position:sticky;top:0;flex-direction:row;overflow-x:auto;padding:8px;z-index:5;gap:2px}nav .logo,nav .sp{display:none}nav button{white-space:nowrap;padding:8px 10px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -137,7 +137,10 @@ let attTab='in',hs='',hm=date.slice(0,7),wd=date;
 const classes=()=>[...new Set(S.students.map(s=>s.cls))].sort();
 const inCls=c=>S.students.filter(s=>!c||s.cls===c);
 const opts=(list,sel,all)=>(all?`<option value="">${all}</option>`:'')+list.map(v=>`<option value="${esc(v)}"${v===sel?' selected':''}>${esc(v)}</option>`).join('');
-let tt;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2200)}
+let tt;function toast(m,undo){const t=$('#toast');t.textContent=m;if(undo){const b=document.createElement('button');b.type='button';b.textContent='Annuler';b.onclick=()=>{clearTimeout(tt);t.classList.remove('show','act');undo()};t.append(b)}t.classList.toggle('act',!!undo);t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show','act'),undo?8000:2200)}
+/* Annuler : photo complète des données avant une suppression / un import, restaurée en un clic */
+const snap=()=>JSON.stringify(S);
+const undoer=u=>()=>{try{S=Object.assign({students:[],assign:[],grades:{},att:{}},JSON.parse(u));cls='';save();render();toast('Action annulée')}catch(e){toast('Annulation impossible')}};
 
 /* Moyenne : seules les notes existantes comptent (poids : contrôle/examen 75 %, devoir/projet 15 %, correction 10 %) */
 function calc(sid,sem){
@@ -168,9 +171,9 @@ dash(){
   const st=S.students,avgs=st.map(s=>calc(s.id).avg).filter(a=>a!=null);
   const recs=Object.values(S.att),pres=recs.filter(r=>r!=='absent').length;
   const watch=[];
-  st.forEach(s=>{const a=calc(s.id).avg,abs=Object.keys(S.att).filter(k=>k.endsWith('_'+s.id)&&S.att[k]==='absent').length,why=[];
+  const ab=absCount();st.forEach(s=>{const a=calc(s.id).avg,abs=ab[s.id]||0,why=[];
     if(a==null){if(activeFor(s))why.push('Aucune note enregistrée')}else if(a<10)why.push('Moyenne '+fmt(a)+'/20');
-    if(abs>3)why.push(abs+' absences');
+    if(abs>3)why.push(abs+' absences '+PERL[absPer()]);
     if(why.length)watch.push({s,why:why.join(' · '),a})});
   watch.sort((x,y)=>(x.a==null?99:x.a)-(y.a==null?99:y.a));
   return head('Tableau de bord','Vue d’ensemble de vos classes')+dashView(st,avgs,watch);
@@ -217,18 +220,18 @@ cal(){
   `<div class="card tw"><h2>Ce mois</h2>${mine.length?`<table><tbody>${mine.map(i=>`<tr><td>${CT[i.type]}</td><td>${esc(i.title)}</td><td>${dateFr(i.start)}${i.end?' au '+dateFr(i.end):''}</td><td><button class="btn del sm" onclick="delCal('${i.id}')">Supprimer</button></td></tr>`).join('')}</tbody></table>`:'<p class="empty">Rien de prévu ce mois-ci.</p>'}</div>`+ttCard();
 },
 data(){
-  return head('Export / Import','Sauvegardes, PDF, calendrier et GitHub')+dataNew()+
-  `<div class="card"><h2>Exporter et importer</h2><div class="row"><button class="btn acc" onclick="exp()">Exporter en JSON</button><label>Importer une sauvegarde<input type="file" accept=".json" onchange="imp(this.files[0])"></label><button class="btn del" onclick="reset()">Tout effacer</button></div></div>`;
+  return head('Export / Import','Sauvegardes, années scolaires, PDF, calendrier et GitHub')+yearCard()+dataNew()+
+  `<div class="card"><h2>Exporter et importer</h2><div class="row"><button class="btn acc" onclick="exp()">Exporter en JSON</button><label>Importer une sauvegarde<input type="file" accept=".json" onchange="imp(this.files[0]);this.value=''"></label><button class="btn del" onclick="reset()">Tout effacer</button></div></div>`;
 }};
 
 function render(){nav();$('#main').innerHTML=V[view]();if(view==='work')autoTitle();window.scrollTo(0,0)}
 function addStu(){const f=$('#f1').value.trim(),l=$('#f2').value.trim(),c=$('#f3').value.trim();if(!f||!l||!c)return toast('Renseignez prénom, nom et classe');S.students.push({id:uid(),first:f,last:l,cls:c,g:$('#f4').value,dob:$('#f5').value,created:new Date().toISOString().slice(0,10)});save();render();toast('Élève ajouté')}
-async function delStu(id){if(!await ask('Supprimer cet élève et ses notes ?','Supprimer'))return;S.students=S.students.filter(s=>s.id!==id);Object.keys(S.grades).filter(k=>k.endsWith('_'+id)).forEach(k=>delete S.grades[k]);Object.keys(S.att).filter(k=>k.endsWith('_'+id)).forEach(k=>delete S.att[k]);save();render()}
-function mark(id,v){const list=inCls(cls);if(draftOn(list)){const dk=date+'|'+cls;(attDraft[dk]=attDraft[dk]||{})[id]=v;keep();return}const k=date+'_'+id;S.att[k]===v?delete S.att[k]:S.att[k]=v;save();render()}
-function allPres(){const list=inCls(cls);if(draftOn(list)){delete attDraft[date+'|'+cls];keep();return toast('Tous présents : validez l’appel pour enregistrer')}list.forEach(s=>S.att[date+'_'+s.id]='present');save();render();toast('Tous marqués présents')}
+async function delStu(id){if(!await ask('Supprimer cet élève et ses notes ?','Supprimer'))return;const u=snap();S.students=S.students.filter(s=>s.id!==id);Object.keys(S.grades).filter(k=>k.endsWith('_'+id)).forEach(k=>delete S.grades[k]);Object.keys(S.att).filter(k=>k.endsWith('_'+id)).forEach(k=>delete S.att[k]);save();keep();toast('Élève supprimé',undoer(u))}
+function mark(id,v){const list=inCls(cls);if(draftOn(list)){const dk=date+'|'+cls;(attDraft[dk]=attDraft[dk]||{})[id]=v;keep();return}const k=date+'_'+id;S.att[k]===v?delete S.att[k]:S.att[k]=v;save();keep()}
+function allPres(){const list=inCls(cls);if(draftOn(list)){delete attDraft[date+'|'+cls];keep();return toast('Tous présents : validez l’appel pour enregistrer')}list.forEach(s=>S.att[date+'_'+s.id]='present');save();keep();toast('Tous marqués présents')}
 function addWork(){const t=$('#w1').value.trim();if(!t)return toast('Donnez un titre à l’évaluation');const ty=$('#w2').value,same=SAME.includes(ty);S.assign.push({id:uid(),title:t,type:ty,cls:$('#w3').value,subject:$('#w4').value.trim(),given:same?'':$('#w5').value,due:same?$('#w7').value:$('#w6').value,sem:$('#w8').value,archived:false});semLast=$('#w8').value;save();render();toast('Évaluation créée')}
-function arch(id){const a=S.assign.find(x=>x.id===id);a.archived=!a.archived;save();render()}
-async function delWork(id){if(!await ask('Supprimer cette évaluation et ses notes ?','Supprimer'))return;S.assign=S.assign.filter(a=>a.id!==id);Object.keys(S.grades).filter(k=>k.startsWith(id+'_')).forEach(k=>delete S.grades[k]);Object.keys(CM()).filter(k=>k.startsWith(id+'_')).forEach(k=>{delete CM()[k];delete CMM()[k]});save();render()}
+function arch(id){const a=S.assign.find(x=>x.id===id);a.archived=!a.archived;save();keep()}
+async function delWork(id){if(!await ask('Supprimer cette évaluation et ses notes ?','Supprimer'))return;const u=snap();S.assign=S.assign.filter(a=>a.id!==id);Object.keys(S.grades).filter(k=>k.startsWith(id+'_')).forEach(k=>delete S.grades[k]);Object.keys(CM()).filter(k=>k.startsWith(id+'_')).forEach(k=>{delete CM()[k];delete CMM()[k]});save();keep();toast('Évaluation supprimée',undoer(u))}
 function grades(id){
   const a=S.assign.find(x=>x.id===id),list=S.students.filter(s=>a.cls==='toutes'||s.cls===a.cls);
   $('#dlg').innerHTML=`<h2>${esc(a.title)}</h2><p class="sub">${TN[a.type]} · ${a.type==='correction'?'choisissez une appréciation par cahier':'notes sur 20, appréciation générée automatiquement pour chaque élève (modifiable)'}. Laissez vide si l’élève n’a pas de note.</p><div class="row" style="margin:8px 0"><label style="flex:1">Recherche<input type="search" placeholder="Nom ou prénom…" oninput="rowFilter(this,'#gtbl')"></label><span class="sub rc"></span></div><div id="gtbl" style="max-height:56vh;overflow:auto">${list.length?`<table>${list.map(s=>`<tr data-q="${esc(norm(nmOf(s)))}"><td>${esc(s.first)} ${esc(s.last)}</td><td>${a.type==='correction'?`<select onchange="setG('${id}','${s.id}',this.value,this)"><option value="">—</option>${CORR.map(([l,v])=>`<option value="${v}"${parseFloat(S.grades[id+'_'+s.id])===v?' selected':''}>${esc(l)}</option>`).join('')}</select>`:`<input type="number" min="0" max="20" step="0.25" style="width:90px" value="${esc(S.grades[id+'_'+s.id]??'')}" oninput="setG('${id}','${s.id}',this.value,this)">`}</td><td>${a.type==='correction'?'':`<input class="ap" data-s="${s.id}" style="width:100%;min-width:300px" placeholder="Appréciation" value="${esc(S.grades[id+'_'+s.id]===undefined?'':(CM()[id+'_'+s.id]||genNote(S.grades[id+'_'+s.id],s,id)))}" oninput="setC('${id}','${s.id}',this.value)">`}</td></tr>`).join('')}</table>`:'<p class="empty">Aucun élève dans cette classe.</p>'}</div><div style="text-align:right;margin-top:14px"><button class="btn ghost" onclick="regenAll('${id}')">Régénérer les appréciations</button> <button class="btn" onclick="closeD()">Terminer</button></div>`;
@@ -329,7 +332,18 @@ function preview(rows){
   $('#dlg').showModal();
 }
 function doImport(){pend.forEach(r=>S.students.push({id:uid(),first:r.f,last:r.l,cls:r.c,g:r.g,dob:r.dob,created:new Date().toISOString().slice(0,10)}));const n=pend.length;pend=[];save();closeD();toast(n+' élève(s) importé(s)')}
-function imp(f){if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);S=Object.assign({students:[],assign:[],grades:{},att:{}},d);save();render();toast('Sauvegarde importée')}catch(e){toast('Fichier invalide : choisissez une sauvegarde EduManager')}};r.readAsText(f)}
+const isO=v=>!!v&&typeof v==='object'&&!Array.isArray(v);
+function validState(d){return isO(d)&&Array.isArray(d.students)&&d.students.every(x=>isO(x)&&x.id&&typeof x.first==='string'&&typeof x.last==='string'&&typeof x.cls==='string')&&(d.assign===undefined||(Array.isArray(d.assign)&&d.assign.every(a=>isO(a)&&a.id)))&&(d.grades===undefined||isO(d.grades))&&(d.att===undefined||isO(d.att))&&(d.archives===undefined||Array.isArray(d.archives))}
+function imp(f){if(!f)return;const r=new FileReader();r.onerror=()=>toast('Lecture du fichier impossible');
+  r.onload=async()=>{let d;try{d=JSON.parse(r.result)}catch(e){return toast('Fichier invalide : choisissez une sauvegarde EduManager (.json)')}
+    if(!validState(d))return toast('Fichier invalide : ce n’est pas une sauvegarde EduManager');
+    const cl=new Set(d.students.map(x=>x.cls)).size,na=(d.assign||[]).length,np=Object.keys(d.att||{}).length,ar=(d.archives||[]).length;
+    const msg='Fichier : '+d.students.length+' élève(s) dans '+cl+' classe(s), '+na+' évaluation(s), '+np+' présence(s)'+(ar?', '+ar+' année(s) archivée(s)':'')+'.\n\nCette action remplace TOUTES vos données actuelles ('+S.students.length+' élève(s)). Pensez à exporter une sauvegarde avant. Un bouton « Annuler » restera disponible quelques secondes.';
+    if(!await ask(msg,'Remplacer mes données'))return;
+    const u=snap(),old=S;S=Object.assign({students:[],assign:[],grades:{},att:{}},d);
+    if(d.archives===undefined&&old.archives)S.archives=old.archives;
+    cls='';save();render();toast('Sauvegarde importée',undoer(u))};
+  r.readAsText(f)}
 /* ===== Appréciations, Excel (ExcelJS), identifiants, présences ===== */
 const CORR=[['Excellent : cahier très soigné',18],['Très bon : bien présenté',16],['Bon : propre et à jour',14],['Correct : assez soigné',12],['Passable : manque de soin',10],['Insuffisant : incomplet, à reprendre',8],['Non rendu ou non mis à jour',5]];
 function appr(n,t){n=parseFloat(n);if(isNaN(n))return'';if(t==='correction')return CORR.reduce((b,x)=>Math.abs(x[1]-n)<Math.abs(b[1]-n)?x:b)[0];return n>=18?'Excellent travail':n>=16?'Très bien':n>=14?'Bien':n>=12?'Assez bien':n>=10?'Passable':n>=8?'Insuffisant, à consolider':n>=5?'Faible, efforts nécessaires':'Très insuffisant, à reprendre'}
@@ -423,14 +437,14 @@ async function genCreds(){
 }
 function expList(){const L=inCls(cls);if(!L.length)return toast('Aucun élève');xl('liste-eleves.xlsx',[{name:'Élèves',rows:[['Nom','Prénom','Classe','Genre','Date de naissance','Âge','Identifiant','Mot de passe'],...L.map(s=>[s.last,s.first,s.cls,s.g==='F'?'Fille':s.g==='M'?'Garçon':'',s.dob?dateFr(s.dob):'',age(s.dob)==null?'':age(s.dob),s.user||'',s.pwd||''])]}])}
 function wipe(ids){const set=new Set(ids);S.students=S.students.filter(s=>!set.has(s.id));Object.keys(S.grades).filter(k=>set.has(k.slice(k.indexOf('_')+1))).forEach(k=>delete S.grades[k]);Object.keys(S.att).filter(k=>set.has(k.slice(11))).forEach(k=>delete S.att[k]);Object.keys(CM()).filter(k=>set.has(k.slice(k.indexOf('_')+1))).forEach(k=>{delete CM()[k];delete CMM()[k]})}
-async function delClass(){if(!cls)return toast('Choisissez d’abord une classe dans le filtre');const ids=inCls(cls).map(s=>s.id);if(!await ask('Supprimer la classe '+cls+' et ses '+ids.length+' élève(s), avec leurs notes et présences ?','Supprimer'))return;wipe(ids);cls='';save();render();toast('Classe supprimée')}
-async function delAll(){if(!S.students.length)return toast('Aucun élève');if(!await ask('Supprimer TOUS les élèves ('+S.students.length+') et toutes les classes, avec leurs notes et présences ?','Tout supprimer'))return;wipe(S.students.map(s=>s.id));cls='';save();render();toast('Tous les élèves ont été supprimés')}
+async function delClass(){if(!cls)return toast('Choisissez d’abord une classe dans le filtre');const ids=inCls(cls).map(s=>s.id);if(!await ask('Supprimer la classe '+cls+' et ses '+ids.length+' élève(s), avec leurs notes et présences ?','Supprimer'))return;const u=snap();wipe(ids);cls='';save();render();toast('Classe supprimée',undoer(u))}
+async function delAll(){if(!S.students.length)return toast('Aucun élève');if(!await ask('Supprimer TOUS les élèves ('+S.students.length+') et toutes les classes, avec leurs notes et présences ?','Tout supprimer'))return;const u=snap();wipe(S.students.map(s=>s.id));cls='';save();render();toast('Tous les élèves ont été supprimés',undoer(u))}
 /* ===== Calendrier, PDF, ZIP, GitHub ===== */
 let calM=date.slice(0,7);
 const CAL=()=>S.cal||(S.cal=[]),CT={event:'Événement',vac:'Vacances',ferie:'Jour férié'};
 function calGo(k){const [y,m]=calM.split('-').map(Number);calM=new Date(Date.UTC(y,m-1+k,1)).toISOString().slice(0,7);render()}
 function addCal(){const t=$('#c2').value.trim(),s=$('#c3').value,e=$('#c4').value;if(!t||!s)return toast('Renseignez le titre et la date de début');if(e&&e<s)return toast('La fin doit suivre le début');CAL().push({id:uid(),type:$('#c1').value,title:t,start:s,end:e||'',remind:+$('#c5').value});save();render();toast('Ajouté au calendrier')}
-function delCal(id){S.cal=CAL().filter(i=>i.id!==id);save();render()}
+function delCal(id){const u=snap();S.cal=CAL().filter(i=>i.id!==id);save();render();toast('Événement supprimé',undoer(u))}
 function pD(v){if(v instanceof Date){const t=new Date(v.getTime()+432e5);v=t.getUTCFullYear()+'-'+String(t.getUTCMonth()+1).padStart(2,'0')+'-'+String(t.getUTCDate()).padStart(2,'0')}
   const s=cell(v);let m=s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/),y,o,d;
   if(m){y=+m[1];o=+m[2];d=+m[3]}else if(m=s.match(/^(\d{1,2})[-\/. ](\d{1,2})[-\/. ](\d{4})$/)){d=+m[1];o=+m[2];y=+m[3]}else return'';
@@ -611,9 +625,9 @@ function dashView(st,avgs,watch){
   const cnt=bands.map(b=>avgs.filter(b[1]).length),mx=Math.max(1,...cnt);
   const days=[0,1,2,3,4,5,6].map(i=>addD(today(),i-6)),att=days.map(d=>{const r=recs.filter(x=>x[0].startsWith(d+'_'));return r.length?Math.round(r.filter(x=>x[1]!=='absent').length/r.length*100):null});
   const part=slicePg('dash',watch);
-  return `<section class="hero"><div><h2>${hello} 👋</h2><p>${dt.charAt(0).toUpperCase()+dt.slice(1)}</p><p class="hl">${watch.length} élève(s) à suivre · ${rem.length} rappel(s) cette semaine</p>${sessLine()}${lesLine()}${appelLine()}</div><div class="hq"><button class="btn acc" onclick="go('students')">Ajouter un élève</button><button class="btn glass" onclick="go('att')">Présences du jour</button><button class="btn glass" onclick="go('work')">Créer un devoir</button></div></section>`+appelCard()+
+  return `<section class="hero"><div><h2>${hello} 👋</h2><p>${dt.charAt(0).toUpperCase()+dt.slice(1)} · Année scolaire ${esc(S.year||schoolYear())}</p><p class="hl">${watch.length} élève(s) à suivre · ${rem.length} rappel(s) cette semaine</p>${sessLine()}${lesLine()}${appelLine()}</div><div class="hq"><button class="btn acc" onclick="go('students')">Ajouter un élève</button><button class="btn glass" onclick="go('att')">Présences du jour</button><button class="btn glass" onclick="go('work')">Créer un devoir</button></div></section>`+appelCard()+
   `<div class="kpis">${kpi('🎓',st.length,'élèves',`<span class="ks">👧 ${f} · 👦 ${m}</span>`)}${kpi('🏫',classes().length,'classes')}${kpi('📈',fmt(mean),'moyenne générale',mean==null?'':bar(mean/20*100))}${kpi('✅',rate==null?'—':rate+' %','taux de présence',rate==null?'':bar(rate))}${kpi('🎂',aa==null?'—':aa,'âge moyen (ans)')}${kpi('📝',S.assign.filter(a=>!a.archived).length,'devoirs actifs')}</div>`+
-  `<div class="dcols"><div><div class="card"><h2>Élèves à suivre (${watch.length})</h2>${watch.length?part.map(w=>`<div class="wi"><span class="av">${esc(((w.s.first||'')[0]||'')+((w.s.last||'')[0]||'')).toUpperCase()}</span><div style="flex:1;min-width:0"><b>${esc(nmOf(w.s))}</b> <span class="pill cl">${esc(w.s.cls)}</span><div style="margin-top:4px"><span class="chip ${w.a==null?'info':w.a<8?'bad':''}">${esc(w.why)}</span></div></div><button class="btn ghost sm" onclick="detail('${w.s.id}')">Détail</button></div>`).join('')+pager('dash',watch.length,[5,10,20]):'<p class="empty">Personne à suivre pour le moment. 🎉</p>'}</div>`+
+  `<div class="dcols"><div><div class="card"><div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px"><h2 style="margin:0">Élèves à suivre (${watch.length})</h2><label style="flex-direction:row;align-items:center;gap:6px">Absences (&gt;3)<select onchange="setAbsPer(this.value)">${Object.entries(PERL).map(([k,v])=>`<option value="${k}"${k===absPer()?' selected':''}>${v}</option>`).join('')}</select></label></div>${watch.length?part.map(w=>`<div class="wi"><span class="av">${esc(((w.s.first||'')[0]||'')+((w.s.last||'')[0]||'')).toUpperCase()}</span><div style="flex:1;min-width:0"><b>${esc(nmOf(w.s))}</b> <span class="pill cl">${esc(w.s.cls)}</span><div style="margin-top:4px"><span class="chip ${w.a==null?'info':w.a<8?'bad':''}">${esc(w.why)}</span></div></div><button class="btn ghost sm" onclick="detail('${w.s.id}')">Détail</button></div>`).join('')+pager('dash',watch.length,[5,10,20]):'<p class="empty">Personne à suivre pour le moment. 🎉</p>'}</div>`+
   `<div class="card"><h2>Répartition des moyennes</h2>${avgs.length?bands.map((b,i)=>`<div class="hb"><span>${b[0]}</span><div class="bar"><i style="width:${cnt[i]/mx*100}%;background:${b[2]}"></i></div><b>${cnt[i]}</b></div>`).join(''):'<p class="empty">Aucune moyenne calculée pour le moment.</p>'}</div></div>`+
   `<div>${ctCard()}${remCard()||'<div class="card"><h2>Rappels de la semaine</h2><p class="empty">Rien de prévu cette semaine.</p></div>'}<div class="card"><h2>Présences — 7 derniers jours</h2><div class="cbars">${att.map((p,i)=>`<div class="cb"><div class="cbv"><i style="height:${p==null?3:p}%;${p==null?'opacity:.25':''}"></i></div><span>${DJ[new Date(days[i]+'T00:00:00Z').getUTCDay()].slice(0,3)}</span><small>${p==null?'—':p+'%'}</small></div>`).join('')}</div></div></div></div>`;
 }
@@ -660,7 +674,7 @@ function addTT(){const ds=[...document.querySelectorAll('.ttd')].filter(x=>x.che
   if(!ds.length)return toast('Cochez au moins un jour');if(!s||!e||!c)return toast('Renseignez l’heure de début, de fin et choisissez une classe');if(tmin(e)<=tmin(s))return toast('L’heure de fin doit suivre le début');
   const bad=ds.find(d=>TT().some(x=>x.day===d&&tmin(s)<tmin(x.end)&&tmin(x.start)<tmin(e)));if(bad)return toast('Chevauchement avec une autre séance le '+JN[bad].toLowerCase());
   ttLast=c;if(!TT().length)S.ttSince=today();ds.forEach(d=>TT().push({id:uid(),day:d,start:s,end:e,cls:c}));save();keep();toast(ds.length+' séance(s) ajoutée(s)')}
-function delTT(id){S.tt=TT().filter(x=>x.id!==id);save();keep()}
+function delTT(id){const u=snap();S.tt=TT().filter(x=>x.id!==id);save();keep();toast('Séance supprimée',undoer(u))}
 /* Import de l’emploi du temps (Excel / CSV) : colonnes Jour, Début, Fin, Classe */
 const fmtHM=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
 function pT(v){if(typeof v==='number')return v>=0&&v<1?Math.round(v*1440):null;
@@ -801,7 +815,7 @@ function ctList(){const q=norm(lq).split(' ').filter(Boolean),L=LS().filter(l=>(
   return slicePg('ct',L).map(l=>lcard(l)).join('')+pager('ct',L.length,[10,25,50])}
 function searchLes(v){lq=v;PG.ct.p=1;$('#lslist').innerHTML=ctList()}
 function togLes(id){const l=lesById(id);if(!l)return;l.done=!l.done;l.doneAt=l.done?today():'';save();keep();const nx=l.done?nextLes(l):null;toast(l.done?'Leçon validée'+(nx?' · prochaine : '+nx.title:''):'Validation annulée')}
-async function delLes(id){if(!await ask('Supprimer cette leçon ?','Supprimer'))return;S.lessons=LS().filter(x=>x.id!==id);if(M().lesId===id)M().lesId='';save();keep()}
+async function delLes(id){if(!await ask('Supprimer cette leçon ?','Supprimer'))return;const u=snap();S.lessons=LS().filter(x=>x.id!==id);if(M().lesId===id)M().lesId='';save();keep();toast('Leçon supprimée',undoer(u))}
 function lesForm(id,c0){const l=id?lesById(id):null,v=l||{cls:c0||cls||'',title:'',from:'',to:'',sem:'',n:1,content:'',hw:''},cl=[...new Set([...classes(),v.cls].filter(Boolean))].sort(),auto=!l||!endFor(v.cls,v.from,v.n)||endFor(v.cls,v.from,v.n)===lesTo(v);
   $('#dlg').innerHTML=`<h2>${l?'Modifier la leçon':'Nouvelle leçon'}</h2><div class="row" style="margin:12px 0"><label>Classe<select id="l1" onchange="lesEnd(1)"><option value="">Choisir…</option>${opts(cl,v.cls)}</select></label><label style="flex:1;min-width:220px">Titre de la leçon<input id="l2" value="${esc(v.title)}"></label></div><div class="row" style="margin-bottom:8px"><label>Du<input type="date" id="l3" value="${esc(v.from||'')}" oninput="lesEnd(1)"></label><label>Séances<input type="number" id="l6" min="1" max="20" value="${v.n||1}" style="width:80px" oninput="lesEnd(1)"></label><label>Au<input type="date" id="l4" value="${esc(v.to||'')}"></label><label>Semestre<select id="l5"><option value="">Auto</option><option value="S1"${v.sem==='S1'?' selected':''}>S1</option><option value="S2"${v.sem==='S2'?' selected':''}>S2</option></select></label></div><label style="flex-direction:row;align-items:center;gap:8px;margin-bottom:6px"><input type="checkbox" id="l10" ${auto?'checked':''} onchange="lesEnd(1)">Calculer la date de fin automatiquement (jours de la classe dans l’emploi du temps)</label><div class="sub" id="l11" style="margin-bottom:12px"></div><label style="margin-bottom:12px">Contenu / objectifs<textarea id="l7" rows="3" style="font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--txt);resize:vertical">${esc(v.content||'')}</textarea></label><label>Devoirs à faire<input id="l8" value="${esc(v.hw||'')}"></label>${l?`<label style="flex-direction:row;align-items:center;gap:8px;margin-top:10px"><input type="checkbox" id="l9" checked>Décaler automatiquement les leçons suivantes (selon le nombre de séances)</label>`:''}<p class="sub" style="margin-top:10px">Donnez la date de début et le nombre de séances : la date de fin est calculée d’après les jours de la classe (vacances et jours fériés sautés). Les dates sont facultatives : sans dates, utilisez « Planifier selon l’emploi du temps ».</p><div style="text-align:right;margin-top:14px;display:flex;gap:8px;justify-content:flex-end"><button class="btn ghost" onclick="closeD()">Annuler</button><button class="btn acc" onclick="saveLes('${id||''}')">Enregistrer</button></div>`;
   const d=$('#dlg');if(!d.open)d.showModal();lesEnd(0)}
@@ -895,7 +909,7 @@ function cascade(l,order,oldTo){const c=l.cls,T=lesTo(l),i=order.findIndex(x=>x.
   const d=oldTo?dd(oldTo,T):0;if(!d)return 0;after.forEach(x=>{const t0=lesTo(x);x.from=addD(x.from,d);x.to=addD(t0,d);x.sem=semOf(x.from)});return after.length}
 async function delPlan(){if(!cls)return toast('Choisissez d’abord une classe');const n=LS().filter(l=>l.cls===cls).length;if(!n)return toast('Aucune leçon pour cette classe');
   if(!await ask('Supprimer tout le planning de la classe '+cls+' ('+n+' leçon(s)) ? Les validations et les exercices enregistrés de ces leçons seront aussi supprimés.','Supprimer le planning'))return;
-  const ids=new Set(LS().filter(l=>l.cls===cls).map(l=>l.id));S.lessons=LS().filter(l=>l.cls!==cls);if(ids.has(M().lesId))M().lesId='';save();keep();toast('Planning supprimé : '+n+' leçon(s)')}
+  const u=snap(),ids=new Set(LS().filter(l=>l.cls===cls).map(l=>l.id));S.lessons=LS().filter(l=>l.cls!==cls);if(ids.has(M().lesId))M().lesId='';save();keep();toast('Planning supprimé : '+n+' leçon(s)',undoer(u))}
 function autoCls(v){const s=sessState().cur;if(!s)return;if(v==='att')autoAtt();else cls=s.cls}
 /* fin d’une leçon = date de la n-ième séance de la classe à partir du début (emploi du temps, vacances et jours fériés sautés) */
 function endFor(c,f,n){if(!f||!TT().some(x=>x.cls===c))return'';const sl=slotsFor(c,f);return sl.length?sl[Math.min(Math.max(1,n||1),sl.length)-1]:''}
@@ -906,6 +920,60 @@ function lesEnd(set){const c=$('#l1').value,f=$('#l3').value,n=Math.max(1,+$('#l
   if(!f){hint.textContent='Jours de '+c+' : '+days+'. Choisissez la date de début.';return}
   const end=endFor(c,f,n);if(auto&&set&&end)e.value=end;
   hint.textContent='Jours de '+c+' : '+days+(end?' · '+n+' séance(s) à partir du '+dateFr(f)+' → fin le '+DJ[new Date(end+'T00:00:00Z').getUTCDay()].toLowerCase()+' '+dateFr(end):' · aucune séance trouvée après cette date')}
+/* ===== Absences du tableau de bord : par mois / semestre / année ===== */
+const PERL={month:'ce mois',sem:'ce semestre',year:'cette année'};
+const absPer=()=>PERL[S.absPer]?S.absPer:'month';
+function absRange(){const p=absPer(),t=today(),y=+t.slice(0,4),m=+t.slice(5,7);
+  if(p==='month')return[t.slice(0,7)+'-01',t.slice(0,7)+'-31'];
+  if(p==='sem'){if(m>=9)return[y+'-09-01',(y+1)+'-01-31'];if(m===1)return[(y-1)+'-09-01',y+'-01-31'];return[y+'-02-01',y+'-08-31']}
+  return['0000-01-01','9999-12-31']}
+function absCount(){const[a,b]=absRange(),o={};Object.keys(S.att).forEach(k=>{if(S.att[k]!=='absent')return;const d=k.slice(0,10);if(d<a||d>b)return;const id=k.slice(11);o[id]=(o[id]||0)+1});return o}
+function setAbsPer(v){S.absPer=v;save();keep()}
+/* ===== Année scolaire : archivage et nouvelle année (les élèves restent) ===== */
+const YKEYS=['students','assign','grades','att','cmt','cmtM','lessons','mdl','cal','tt'],YDEF={students:[],assign:[],grades:{},att:{}};
+const clone=v=>JSON.parse(JSON.stringify(v));
+function schoolYear(){const t=today(),y=+t.slice(0,4);return +t.slice(5,7)>=8?y+'-'+(y+1):(y-1)+'-'+y}
+function nextYear(v){const m=String(v).match(/(\d{4})\D+(\d{4})/);return m?(+m[1]+1)+'-'+(+m[2]+1):''}
+function yData(){const o={};YKEYS.forEach(k=>{if(S[k]!==undefined)o[k]=clone(S[k])});return o}
+function withData(data,fn){const old=S;S=Object.assign({students:[],assign:[],grades:{},att:{}},data);try{return fn()}finally{S=old}}
+function yearCard(){const yr=S.year||schoolYear(),A=(S.archives||[]).slice().sort((a,b)=>(b.at||'').localeCompare(a.at||''));
+  return `<div class="card"><h2>Année scolaire</h2><p>Année en cours : <b>${esc(yr)}</b> · ${S.students.length} élève(s)</p><div class="row"><button class="btn acc" onclick="newYear()">Clôturer l’année et en commencer une nouvelle</button><button class="btn ghost" onclick="renYear()">Modifier le nom</button></div><p class="sub" style="margin-top:8px">La clôture archive notes, présences, devoirs et leçons, puis repart à zéro. Les élèves sont conservés (vous pouvez changer leur classe).</p>`+
+  (A.length?`<h3 style="margin:16px 0 6px">Années archivées</h3><div class="tw"><table><thead><tr><th>Année</th><th>Archivée le</th><th>Élèves</th><th>Évaluations</th><th>Présences</th><th></th></tr></thead><tbody>${A.map(a=>`<tr><td><b>${esc(a.year)}</b></td><td>${a.at?dateFr(a.at):'—'}</td><td>${(a.data.students||[]).length}</td><td>${(a.data.assign||[]).length}</td><td>${Object.keys(a.data.att||{}).length}</td><td><button class="btn ghost sm" onclick="arcOpen('${a.id}')">Consulter</button> <button class="btn ghost sm" onclick="arcExp('${a.id}')">Exporter</button> <button class="btn ghost sm" onclick="arcReopen('${a.id}')">Rouvrir</button> <button class="btn del sm" onclick="arcDel('${a.id}')">Supprimer</button></td></tr>`).join('')}</tbody></table></div>`:'')+`</div>`}
+function renYear(){$('#dlg').innerHTML=`<h2>Année scolaire en cours</h2><div class="row" style="margin:12px 0"><label>Nom<input id="ry" value="${esc(S.year||schoolYear())}" placeholder="2026-2027"></label></div><div style="text-align:right;display:flex;gap:8px;justify-content:flex-end"><button class="btn ghost" onclick="closeD()">Annuler</button><button class="btn acc" onclick="saveYear()">Enregistrer</button></div>`;$('#dlg').showModal()}
+function saveYear(){const v=$('#ry').value.trim();if(!v)return toast('Indiquez un nom');S.year=v;save();closeD();toast('Année modifiée')}
+function newYear(){
+  if(!S.students.length&&!S.assign.length&&!Object.keys(S.att).length)return toast('Rien à archiver pour le moment');
+  const yr=S.year||schoolYear(),cl=classes();
+  $('#dlg').innerHTML=`<h2>Clôturer l’année ${esc(yr)}</h2><p>L’année sera <b>archivée</b> (élèves, notes, présences, devoirs, leçons). Les <b>élèves restent</b> dans l’application ; notes, présences, devoirs et leçons repartent à zéro.</p><div class="row" style="margin:12px 0"><label>Nouvelle année scolaire<input id="ny0" value="${esc(nextYear(yr))}" placeholder="2027-2028"></label></div>`+
+  (cl.length?`<h3 style="margin:8px 0 4px">Passage de classe</h3><p class="sub">Changez le nom si la classe change (ex. 1AC-1 → 2AC-1). Laissez tel quel pour garder la classe.</p><div class="tw" style="max-height:30vh;overflow:auto"><table><tbody>${cl.map(c=>`<tr><td>${esc(c)} <span class="sub">(${inCls(c).length})</span></td><td>→</td><td><input data-oc="${esc(c)}" value="${esc(c)}" style="width:100%"></td></tr>`).join('')}</tbody></table></div>`:'')+
+  `<label class="chk"><input type="checkbox" id="ny1" checked><span>Garder l’emploi du temps</span></label><label class="chk"><input type="checkbox" id="ny2"><span>Garder le calendrier (vacances, jours fériés, événements)</span></label><div style="text-align:right;margin-top:14px;display:flex;gap:8px;justify-content:flex-end"><button class="btn ghost" onclick="closeD()">Annuler</button><button class="btn acc" onclick="doNewYear()">Archiver et commencer</button></div>`;
+  $('#dlg').showModal()}
+function doNewYear(){const ny=$('#ny0').value.trim();if(!ny)return toast('Indiquez le nom de la nouvelle année');
+  const map={};document.querySelectorAll('#dlg [data-oc]').forEach(i=>{const n=i.value.trim();if(n&&n!==i.dataset.oc)map[i.dataset.oc]=n});
+  const keepTT=$('#ny1').checked,keepCal=$('#ny2').checked,u=snap(),yr=S.year||schoolYear();
+  (S.archives=S.archives||[]).push({id:uid(),year:yr,at:today(),data:yData()});
+  S.students.forEach(x=>{if(map[x.cls])x.cls=map[x.cls]});
+  if(keepTT)TT().forEach(x=>{if(map[x.cls])x.cls=map[x.cls]});else S.tt=[];
+  if(!keepCal)S.cal=[];
+  S.assign=[];S.grades={};S.att={};S.cmt={};S.cmtM={};S.lessons=[];S.skipApp={};
+  const m=M();m.lesId='';m.nodone={};m.doneN={};m.notN={};
+  S.ttSince=today();S.year=ny;cls='';save();closeD();toast('Année '+yr+' archivée · nouvelle année : '+ny,undoer(u))}
+const arcGet=id=>(S.archives||[]).find(x=>x.id===id);
+function arcRows(a){return withData(a.data,()=>{const ab={},lt={};Object.keys(S.att).forEach(k=>{const id=k.slice(11),v=S.att[k];if(v==='absent')ab[id]=(ab[id]||0)+1;else if(v==='late')lt[id]=(lt[id]||0)+1});
+  return[['Nom','Prénom','Classe','Moy. S1','Moy. S2','Moy. année','Absences','Retards'],...S.students.map(x=>[x.last,x.first,x.cls,fmt(calc(x.id,'S1').avg),fmt(calc(x.id,'S2').avg),fmt(calc(x.id).avg),ab[x.id]||0,lt[x.id]||0])]})}
+function arcOpen(id){const a=arcGet(id);if(!a)return;
+  $('#dlg').innerHTML=`<h2>Année ${esc(a.year)}</h2><p class="sub">Archivée le ${a.at?dateFr(a.at):'—'} · lecture seule</p><div class="tw" style="max-height:52vh;overflow:auto">${tbl(arcRows(a))}</div><div style="text-align:right;margin-top:14px;display:flex;gap:8px;justify-content:flex-end"><button class="btn ghost" onclick="arcXl('${a.id}')">Exporter Excel</button><button class="btn" onclick="closeD()">Fermer</button></div>`;$('#dlg').showModal()}
+function arcXl(id){const a=arcGet(id);if(a)xl('archive-'+slugF(a.year)+'.xlsx',[{name:'Année '+a.year,rows:arcRows(a)}])}
+function arcExp(id){const a=arcGet(id);if(a)dl('edumanager-archive-'+slugF(a.year)+'.json',JSON.stringify(Object.assign({year:a.year},a.data),null,1))}
+async function arcReopen(id){const a=arcGet(id);if(!a)return;
+  if(!await ask('Rouvrir l’année '+a.year+' ?\n\nLes données de l’année en cours ('+(S.year||schoolYear())+') seront archivées automatiquement : rien n’est perdu.','Rouvrir'))return;
+  const u=snap(),cur={id:uid(),year:S.year||schoolYear(),at:today(),data:yData()},d=clone(a.data);
+  S.archives=S.archives.filter(x=>x.id!==id);S.archives.push(cur);
+  YKEYS.forEach(k=>{if(d[k]!==undefined)S[k]=d[k];else if(YDEF[k]!==undefined)S[k]=clone(YDEF[k]);else delete S[k]});
+  S.year=a.year;S.skipApp={};S.ttSince=today();cls='';save();render();toast('Année '+a.year+' rouverte',undoer(u))}
+async function arcDel(id){const a=arcGet(id);if(!a)return;
+  if(!await ask('Supprimer définitivement l’archive '+a.year+' ?','Supprimer'))return;
+  const u=snap();S.archives=S.archives.filter(x=>x.id!==id);save();render();toast('Archive supprimée',undoer(u))}
 /* ===== Installation (PWA) ===== */
 let dip=null;
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();dip=e;if(view==='data')render()});
@@ -917,7 +985,7 @@ function installCard(){
   const ios=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
   return `<div class="card"><h2>📲 Installer l’application</h2>${dip?'<div class="row" style="margin-bottom:10px"><button class="btn acc" onclick="installApp()">Installer sur cet appareil</button></div>':''}<p class="sub">${ios?'<b>iPhone / iPad (Safari)</b> : touchez Partager, puis « Sur l’écran d’accueil ».':'<b>Android (Chrome)</b> : menu ⋮, puis « Installer l’application ».<br><b>PC (Chrome / Edge)</b> : icône d’installation dans la barre d’adresse, ou menu ⋮, puis « Installer EduManager ».<br><b>iPhone / iPad (Safari)</b> : Partager, puis « Sur l’écran d’accueil ».'}</p></div>`;
 }
-async function reset(){if(await ask('Effacer toutes les données ?','Tout effacer')){S={students:[],assign:[],grades:{},att:{}};save();render()}}
+async function reset(){if(await ask('Effacer toutes les données, y compris les années archivées ?','Tout effacer')){const u=snap();S={students:[],assign:[],grades:{},att:{}};cls='';save();render();toast('Toutes les données ont été effacées',undoer(u))}}
 {const s0=sessState().cur;if(s0)cls=s0.cls}
 render();
 {const mc=missedCalls().length,rc=reminders().length;if(mc||rc)setTimeout(()=>toast((mc?'⚠️ '+mc+' appel(s) non fait(s)':'')+(mc&&rc?' · ':'')+(rc?'🔔 '+rc+' rappel(s) cette semaine':'')),600)}
