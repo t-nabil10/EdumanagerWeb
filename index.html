@@ -109,6 +109,11 @@ dialog::backdrop{background:rgba(5,20,19,.55)}
 .toast{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:99px;opacity:0;pointer-events:none;transition:opacity .2s}
 .toast{width:max-content;max-width:92vw;text-align:center;z-index:50}.toast.show{opacity:1}.toast.act{pointer-events:auto}html[lang=ar] *{font-family:"Cairo","Segoe UI",Tahoma,system-ui,sans-serif}html[lang=ar] textarea[readonly]{direction:ltr;text-align:left}.toast button{font:inherit;font-weight:600;border:0;background:var(--acc);color:#10302f;border-radius:99px;padding:3px 12px;margin-inline-start:10px;cursor:pointer}
 @media (max-width:720px){body{flex-direction:column}nav{width:100%;height:auto;position:sticky;top:0;flex-direction:row;overflow-x:auto;padding:8px;z-index:5;gap:2px}nav .logo,nav .sp{display:none}nav button{white-space:nowrap;padding:8px 10px}}
+#syn{position:fixed;inset-inline-end:14px;bottom:calc(14px + env(safe-area-inset-bottom,0px));width:46px;height:46px;padding:0;border-radius:50%;border:2px solid #fff;background:var(--mut);color:#fff;display:grid;place-items:center;cursor:pointer;z-index:40;box-shadow:0 2px 10px rgba(0,0,0,.35)}
+#syn svg{width:23px;height:23px}
+#syn.ok{background:var(--ok)}#syn.run{background:#e0a800;color:#3a2a00}#syn.run svg{animation:synr 1s linear infinite}#syn.err{background:var(--bad)}
+@keyframes synr{to{transform:rotate(360deg)}}
+@media print{#syn{display:none}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -122,12 +127,13 @@ dialog::backdrop{background:rgba(5,20,19,.55)}
 <main id="main"></main>
 <dialog id="dlg"></dialog>
 <div class="toast" id="toast" role="status"></div>
+<button id="syn" type="button" onclick="synDlg()" aria-label="Synchronisation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15.5 6.3L3 16"/><path d="M3 12a9 9 0 0 1 15.5-6.3L21 8"/><path d="M21 3v5h-5"/><path d="M3 21v-5h5"/></svg></button>
 <script>
 const $=s=>document.querySelector(s);
 const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let S={students:[],assign:[],grades:{},att:{}};
 try{const r=localStorage.getItem('edumanager');if(r)S=Object.assign(S,JSON.parse(r))}catch(e){}
-const save=()=>{try{localStorage.setItem('edumanager',JSON.stringify(S))}catch(e){toast('Sauvegarde impossible dans ce navigateur')}try{if(GH().auto)ghAutoSave()}catch(e){}};
+const save=()=>{try{localStorage.setItem('edumanager',JSON.stringify(S))}catch(e){toast('Sauvegarde impossible dans ce navigateur')}try{if(GH().auto)ghAutoSave()}catch(e){}try{localStorage.setItem('em_mod',String(Date.now()));syncSoon()}catch(e){}};
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const W={controle:.75,examen:.75,devoir:.15,projet:.15,correction:.1};
 const TN={controle:'Contrôle',examen:'Examen',devoir:'Devoir',projet:'Projet',correction:'Correction des cahiers'};
@@ -495,7 +501,7 @@ function pdfBul(ids,sem){
 const GH=()=>{try{return JSON.parse(localStorage.getItem('em_gh')||'{}')}catch(e){return{}}};
 const b64=s=>btoa(unescape(encodeURIComponent(s))),ub64=s=>decodeURIComponent(escape(atob(s.replace(/\s/g,''))));
 const ghErr=e=>/Failed to fetch|NetworkError|Load failed/i.test(e.message)?'Connexion à GitHub bloquée dans cette page hébergée : utilisez le fichier autonome.':e.message;
-function ghSet(){const g={token:$('#g1').value.trim(),repo:$('#g2').value.trim(),dir:($('#g3').value.trim()||'sauvegardes').replace(/^\/+|\/+$/g,''),branch:$('#g4').value.trim()||'main',auto:$('#g5').checked};try{localStorage.setItem('em_gh',JSON.stringify(g))}catch(e){}toast('Configuration enregistrée')}
+function ghSet(){const g={token:$('#g1').value.trim(),repo:$('#g2').value.trim(),dir:($('#g3').value.trim()||'sauvegardes').replace(/^\/+|\/+$/g,''),branch:$('#g4').value.trim()||'main',auto:$('#g5').checked,sync:$('#g6')?$('#g6').checked:!!GH().sync};try{localStorage.setItem('em_gh',JSON.stringify(g))}catch(e){}toast('Configuration enregistrée');try{syPaint();if(g.sync&&g.token&&g.repo)syncNow(true)}catch(e){}}
 async function gh(p,o){const g=GH();if(!g.token||!g.repo)throw new Error('Renseignez le token et le dépôt (propriétaire/nom)');const h={Authorization:'Bearer '+g.token,Accept:'application/vnd.github+json'};if(o&&o.body)h['Content-Type']='application/json';const r=await fetch('https://api.github.com/repos/'+g.repo+p,Object.assign({},o,{headers:h}));if(!r.ok){const t=await r.json().catch(()=>({}));throw new Error(r.status+' '+(t.message||'erreur GitHub'))}return r.json()}
 async function ghSave(quiet){const g=GH(),name='edumanager-'+today()+'.json',path=encodeURI((g.dir||'sauvegardes')+'/'+name);
   try{let sha;try{sha=(await gh('/contents/'+path+'?ref='+encodeURIComponent(g.branch))).sha}catch(e){if(!/^404/.test(e.message))throw e}
@@ -505,11 +511,79 @@ let gt=0;function ghAutoSave(){if(gt)return;gt=setTimeout(()=>{gt=0;ghSave(true)
 async function ghFiles(){const g=GH();return(await gh('/contents/'+encodeURI(g.dir||'sauvegardes')+'?ref='+encodeURIComponent(g.branch))).filter(f=>f.name.endsWith('.json')).sort((a,b)=>b.name.localeCompare(a.name))}
 async function ghHist(){const box=$('#ghh');try{const l=await ghFiles();box.innerHTML=l.length?'<table><tbody>'+l.map(f=>{const m=f.name.match(/(\d{4})-(\d{2})-(\d{2})(?:_(\d{2})-(\d{2}))?/);return`<tr><td>${m?m[3]+'/'+m[2]+'/'+m[1]+(m[4]?' à '+m[4]+':'+m[5]:'')+(f.name.includes(today())?' (aujourd’hui)':''):esc(f.name)}</td><td class="sub">${esc(f.name)}</td><td><button class="btn ghost sm" onclick="ghRestore('${esc(f.path)}')">Restaurer</button></td></tr>`}).join('')+'</tbody></table>':'<p class="empty">Aucune sauvegarde trouvée.</p>'}catch(e){box.innerHTML='';toast(/^404/.test(e.message)?'Aucune sauvegarde trouvée':ghErr(e))}}
 async function ghRestore(path){const g=GH();try{if(!path){const l=await ghFiles();if(!l.length)return toast('Aucune sauvegarde trouvée');path=l[0].path}if(!await ask('Remplacer les données actuelles par la sauvegarde '+path.split('/').pop()+' ?','Restaurer'))return;const f=await gh('/contents/'+encodeURI(path)+'?ref='+encodeURIComponent(g.branch));S=Object.assign({students:[],assign:[],grades:{},att:{}},JSON.parse(ub64(f.content)));save();clearTimeout(gt);gt=0;render();toast('Données restaurées depuis GitHub')}catch(e){toast(/^404/.test(e.message)?'Aucune sauvegarde trouvée':ghErr(e))}}
+/* ===== Synchronisation entre appareils (GitHub) : fusion à 3 voies, base = dernier état synchronisé ===== */
+var SY={run:false,err:'',tm:0,again:false};
+const SYP='sync/edumanager-sync.json';
+function syL(k){try{return localStorage.getItem(k)}catch(e){return null}}
+function syS(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+function syOn(){const g=GH();return !!(g.sync&&g.token&&g.repo)}
+function syDirty(){return (+syL('em_mod')||0)>=(+syL('em_last')||0)}
+function syState(){if(!syOn())return'off';if(SY.run)return'run';if(SY.err)return'err';if(!syL('em_when')||syDirty()||SY.tm)return'wait';return'ok'}
+const SYT={off:'Synchronisation non configurée',wait:'Pas encore synchronisé',run:'Synchronisation en cours…',err:'Échec de la synchronisation',ok:'Synchronisé'};
+function syPaint(){const b=$('#syn');if(!b)return;const s=syState();b.className=s==='wait'||s==='off'?'':s;b.title=SYT[s];b.setAttribute('aria-label',SYT[s]);const bx=$('#synbox');if(bx&&$('#dlg').open)bx.innerHTML=synHtml()}
+const syKey=v=>JSON.stringify(v,(k,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.keys(x).sort().reduce((o,i)=>(o[i]=x[i],o),{}):x);
+const syEq=(a,b)=>syKey(a)===syKey(b);
+const syObj=v=>!!v&&typeof v==='object'&&!Array.isArray(v);
+const syIds=v=>Array.isArray(v)&&v.every(x=>syObj(x)&&x.id!=null);
+/* b = base (dernier état commun), l = local, r = distant. pl = le local gagne en cas de vrai conflit. */
+function syMerge(b,l,r,pl){
+  if(syEq(l,r))return l;
+  if(syEq(l,b))return r;
+  if(syEq(r,b))return l;
+  if(syObj(l)&&syObj(r)){const bb=syObj(b)?b:{},o={};new Set(Object.keys(l).concat(Object.keys(r))).forEach(k=>{const v=syMerge(bb[k],l[k],r[k],pl);if(v!==undefined)o[k]=v});return o}
+  if(syIds(l)&&syIds(r)&&(b===undefined||syIds(b))){const mp=a=>new Map((a||[]).map(x=>[x.id,x])),bm=mp(b),lm=mp(l),rm=mp(r),ids=new Set((pl?l.concat(r):r.concat(l)).map(x=>x.id)),out=[];ids.forEach(id=>{const v=syMerge(bm.get(id),lm.get(id),rm.get(id),pl);if(v!==undefined)out.push(v)});return out}
+  return pl?l:r}
+function syErr(e){const m=e&&e.message?e.message:String(e);
+  if(/Failed to fetch|NetworkError|Load failed/i.test(m))return'Impossible de joindre GitHub (connexion coupée ou accès bloqué).';
+  if(/^401/.test(m))return'Token invalide ou expiré ('+m+')';
+  if(/^403/.test(m))return'Accès refusé : droits du token insuffisants ou limite GitHub atteinte ('+m+')';
+  if(/^404/.test(m))return'Dépôt, branche ou accès introuvable : vérifiez le nom du dépôt, la branche et le token ('+m+')';
+  return m}
+function syncSoon(ms){if(!syOn()){syPaint();return}clearTimeout(SY.tm);SY.tm=setTimeout(()=>{SY.tm=0;syncNow()},ms||4000);syPaint()}
+async function syncNow(manual){
+  if(!syOn()){syPaint();if(manual)toast('Activez la synchronisation : Export / Import, carte GitHub');return}
+  if(SY.run){SY.again=true;return}
+  clearTimeout(SY.tm);SY.tm=0;
+  if(!navigator.onLine){SY.err='Hors connexion : les modifications seront envoyées au retour d’Internet.';syPaint();if(manual)toast('Hors connexion');return}
+  SY.run=true;SY.err='';syPaint();
+  const g=GH(),t0=Date.now(),tag=g.repo+'|'+g.branch+'|'+SYP;let remoteChanged=false;
+  try{
+    for(let n=0;n<4;n++){
+      let sha,rem=null;
+      try{const f=await gh('/contents/'+SYP+'?ref='+encodeURIComponent(g.branch),{cache:'no-store'});sha=f.sha;let c=f.content;if(!c||f.encoding==='none')c=(await gh('/git/blobs/'+f.sha,{cache:'no-store'})).content;rem=JSON.parse(ub64(c))}catch(e){if(!/^404/.test(e.message))throw e}
+      if(rem&&!syObj(rem.data))throw new Error('Fichier de synchronisation illisible dans le dépôt');
+      const snap0=JSON.parse(JSON.stringify(S)),tL=+syL('em_mod')||0;
+      let base=null;if(syL('em_brepo')===tag){try{base=JSON.parse(syL('em_base'))}catch(e){}}
+      const merged=rem?syMerge(base||{},snap0,rem.data,tL>=(+rem.t||0)):snap0;
+      if(!rem||!syEq(merged,rem.data)){
+        const body={message:'Synchro EduManager '+new Date().toLocaleString('fr-FR'),content:b64(JSON.stringify({v:1,t:Math.max(tL,+(rem&&rem.t)||0),data:merged})),branch:g.branch};if(sha)body.sha=sha;
+        try{await gh('/contents/'+SYP,{method:'PUT',body:JSON.stringify(body)})}catch(e){if(/^(409|422)/.test(e.message)&&n<3)continue;throw e}
+      }
+      /* l'utilisateur a pu modifier pendant l'échange : on re-fusionne sans rien perdre */
+      const fin=Object.assign({students:[],assign:[],grades:{},att:{}},syEq(S,snap0)?merged:syMerge(snap0,S,merged,true));
+      remoteChanged=!syEq(fin,S);
+      if(remoteChanged){S=fin;syS('edumanager',JSON.stringify(S))}
+      syS('em_base',JSON.stringify(merged));syS('em_brepo',tag);syS('em_last',String(t0));syS('em_when',String(Date.now()));
+      break}
+    SY.err='';
+    if(remoteChanged){const d=$('#dlg'),a=document.activeElement,ed=a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&$('#main').contains(a);
+      if(!d.open&&!ed)keep();toast('Données mises à jour depuis un autre appareil')}
+    else if(manual)toast('Synchronisé ✓')
+  }catch(e){SY.err=syErr(e);if(manual)toast('Synchronisation échouée')}
+  finally{SY.run=false;syPaint();if(SY.again||(!SY.err&&syDirty()&&syL('em_when'))){SY.again=false;syncSoon(1500)}}}
+function synHtml(){const s=syState(),w=+syL('em_when'),col={off:'var(--mut)',wait:'var(--mut)',run:'#e0a800',err:'var(--bad)',ok:'var(--ok)'}[s],p=n=>String(n).padStart(2,'0'),D=new Date(w),when=w?p(D.getDate())+'/'+p(D.getMonth()+1)+'/'+D.getFullYear()+' à '+p(D.getHours())+':'+p(D.getMinutes())+':'+p(D.getSeconds()):'jamais';
+  return `<p style="font-weight:700;font-size:17px;margin:0 0 10px;color:${col}">● ${SYT[s]}</p>`+
+  (s==='off'?'<p class="sub">Allez dans Export / Import, carte « Sauvegarde cloud GitHub » : entrez le token, le dépôt, puis cochez « Synchroniser entre appareils ».</p>':'')+
+  (SY.err?`<p class="warn" style="margin:0 0 10px">${esc(SY.err)}</p>`:'')+
+  `<p class="sub" style="margin:0 0 4px">Dernière synchronisation réussie : <b>${when}</b></p>`+
+  (s==='wait'&&w?'<p class="sub" style="margin:0">Des modifications attendent d’être envoyées.</p>':'')+
+  `<div class="row" style="margin-top:14px;justify-content:flex-end">${s==='off'?'<button class="btn acc" onclick="$(\'#dlg\').close();go(\'data\')">Ouvrir Export / Import</button>':'<button class="btn acc" onclick="syncNow(true)">Synchroniser maintenant</button>'}<button class="btn ghost" onclick="$(\'#dlg\').close();keep()">Fermer</button></div>`}
+function synDlg(){const d=$('#dlg');d.innerHTML='<h2>Synchronisation</h2><div id="synbox">'+synHtml()+'</div>';d.showModal()}
 function dataNew(){const g=GH();return installCard()+`<div class="card"><h2>Sauvegarde ZIP</h2><div class="row"><button class="btn acc" onclick="expZip()">Télécharger le ZIP</button></div><p class="sub" style="margin-top:8px">Contient le JSON complet et la liste des élèves en CSV. Pour restaurer, importez le fichier JSON (carte « Exporter et importer » plus bas).</p></div>`+
   `<div class="card"><h2>Élèves (CSV / Excel)</h2><div class="row"><button class="btn" onclick="expCsv()">Exporter en CSV</button><label>Importer<input type="file" accept=".xlsx,.xls,.csv,.txt" onchange="pickFile(this)"></label><button class="btn ghost" onclick="tpl('csv')">Modèle CSV</button><button class="btn ghost" onclick="tpl('xlsx')">Modèle Excel</button></div></div>`+
   `<div class="card"><h2>Exports PDF</h2><div class="row">${clsPick('Toutes les classes')}<label>Mois (présences)<input type="month" value="${hm}" onchange="hm=this.value"></label><button class="btn" onclick="pdfStu()">Liste des élèves</button><button class="btn" onclick="pdfAtt()">Présences du mois</button><button class="btn acc" onclick="bulDialog()">Bulletins</button></div></div>`+
   `<div class="card"><h2>Vacances et jours fériés</h2><div class="row"><label>Importer (CSV ou Excel)<input type="file" accept=".xlsx,.xls,.csv,.txt" onchange="pickCal(this)"></label><button class="btn ghost" onclick="tplCal()">Modèle CSV</button><button class="btn ghost" onclick="expCal()">Exporter le calendrier</button></div></div>`+
-  `<div class="card"><h2>Sauvegarde cloud GitHub</h2>${window.claude?'<p class="warn">Dans cette page hébergée, les appels vers GitHub sont bloqués. Ouvrez le fichier autonome edumanager.html sur votre ordinateur pour utiliser cette carte.</p>':''}<div class="row"><label>Token (accès Contents : lecture/écriture)<input type="password" id="g1" value="${esc(g.token||'')}" autocomplete="off"></label><label>Dépôt (propriétaire/nom)<input id="g2" placeholder="monnom/edumanager-data" value="${esc(g.repo||'')}"></label><label>Dossier<input id="g3" value="${esc(g.dir||'sauvegardes')}"></label><label>Branche<input id="g4" value="${esc(g.branch||'main')}" style="width:90px"></label></div><div class="row" style="margin-top:10px"><label style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="g5" ${g.auto?'checked':''}>Sauvegarde automatique après chaque modification</label><button class="btn ghost" onclick="ghSet()">Enregistrer la configuration</button><button class="btn acc" onclick="ghSet();ghSave()">Sauvegarder maintenant</button><button class="btn ghost" onclick="ghRestore()">Restaurer la dernière</button><button class="btn ghost" onclick="ghHist()">Historique</button></div><div id="ghh" class="tw" style="margin-top:10px"></div><p class="sub" style="margin-top:8px">Une seule sauvegarde par jour : celle d’aujourd’hui est remplacée à chaque nouvelle sauvegarde, et celles des jours précédents sont conservées. La sauvegarde automatique se déclenche 2 minutes après une modification. Le token reste dans ce navigateur et n’est pas inclus dans les sauvegardes. Utilisez un dépôt privé.</p></div>`}
+  `<div class="card"><h2>Sauvegarde cloud GitHub</h2>${window.claude?'<p class="warn">Dans cette page hébergée, les appels vers GitHub sont bloqués. Ouvrez le fichier autonome edumanager.html sur votre ordinateur pour utiliser cette carte.</p>':''}<div class="row"><label>Token (accès Contents : lecture/écriture)<input type="password" id="g1" value="${esc(g.token||'')}" autocomplete="off"></label><label>Dépôt (propriétaire/nom)<input id="g2" placeholder="monnom/edumanager-data" value="${esc(g.repo||'')}"></label><label>Dossier<input id="g3" value="${esc(g.dir||'sauvegardes')}"></label><label>Branche<input id="g4" value="${esc(g.branch||'main')}" style="width:90px"></label></div><div class="row" style="margin-top:10px"><label style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="g5" ${g.auto?'checked':''}>Sauvegarde automatique après chaque modification</label><label style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="g6" ${g.sync?'checked':''}>Synchroniser entre appareils (icône 🔄)</label><button class="btn ghost" onclick="ghSet()">Enregistrer la configuration</button><button class="btn acc" onclick="ghSet();ghSave()">Sauvegarder maintenant</button><button class="btn ghost" onclick="ghRestore()">Restaurer la dernière</button><button class="btn ghost" onclick="ghHist()">Historique</button></div><div id="ghh" class="tw" style="margin-top:10px"></div><p class="sub" style="margin-top:8px">Une seule sauvegarde par jour : celle d’aujourd’hui est remplacée à chaque nouvelle sauvegarde, et celles des jours précédents sont conservées. La sauvegarde automatique se déclenche 2 minutes après une modification. Le token reste dans ce navigateur et n’est pas inclus dans les sauvegardes. Utilisez un dépôt privé.</p><p class="sub" style="margin-top:8px"><b>Synchronisation entre appareils</b> : entrez le même token, le même dépôt et la même branche sur chaque téléphone, puis cochez la case « Synchroniser entre appareils ». Les données sont fusionnées dans le fichier sync/edumanager-sync.json (chaque synchronisation est un commit : l’historique reste dans GitHub). Sur un nouvel appareil, partez d’une application vide : elle récupère les données existantes.</p></div>`}
 /* ===== Titres automatiques, cartes d’élèves, emojis ===== */
 const TL={controle:'Devoir surveillé (DS)',devoir:'Devoir maison (DM)',examen:'Examen',projet:'Projet',correction:'Correction des cahiers'};
 const TE={controle:'📝',examen:'🎓',devoir:'🏠',projet:'🧩',correction:'📓'};
@@ -1063,6 +1137,12 @@ async function reset(){if(await ask('Effacer toutes les données, y compris les 
 render();
 {const mc=missedCalls().length,rc=reminders().length;if(mc||rc)setTimeout(()=>toast((mc?'⚠️ '+mc+' appel(s) non fait(s)':'')+(mc&&rc?' · ':'')+(rc?'🔔 '+rc+' rappel(s) cette semaine':'')),600)}
 pushNotifs();setInterval(()=>{const t=today();if(t!==lastDay){if(date===lastDay)date=t;lastDay=t;render()}else if(view==='dash')keep();pushNotifs()},300000);
+syPaint();
+window.addEventListener('online',()=>syncNow());
+window.addEventListener('offline',()=>{if(syOn()){SY.err='Hors connexion : les modifications seront envoyées au retour d’Internet.';syPaint()}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')syncNow();else if(syOn()&&syDirty())syncNow()});
+setInterval(()=>{if(document.visibilityState==='visible'&&syOn()&&!SY.run)syncNow()},60000);
+setTimeout(()=>syncNow(),1500);
 if('serviceWorker' in navigator&&location.protocol.indexOf('http')===0)window.addEventListener('load',()=>{try{navigator.serviceWorker.register('sw.js').catch(()=>{})}catch(e){}});
 </script>
 </body>
