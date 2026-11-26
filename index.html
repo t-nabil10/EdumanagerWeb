@@ -210,7 +210,7 @@ work(){
 },
 avg(){
   const list=inCls(cls);
-  return head('Moyennes','Calculées sur les notes saisies uniquement',`<div class="row">${clsPick('Toutes les classes')}<button class="btn ghost" onclick="expAvg(false)">Exporter la classe</button><button class="btn acc" onclick="expAvg(true)">Toutes les classes</button><button class="btn ghost" onclick="pdfReleve()">Relevé de notes (PDF)</button><button class="btn" onclick="bulDialog()">Bulletins (PDF)</button><label>Recherche<input type="search" data-rf="1" placeholder="Nom ou prénom…" oninput="rowFilter(this,'#avglist')"></label><span class="sub rc"></span></div>`)+
+  return head('Moyennes','Calculées sur les notes saisies uniquement',`<div class="row">${clsPick('Toutes les classes')}<button class="btn ghost" onclick="expAvg(false)">Exporter la classe</button><button class="btn acc" onclick="expAvg(true)">Toutes les classes</button><button class="btn acc" onclick="feuilleDlg()">Feuille de classe</button><button class="btn ghost" onclick="pdfReleve()">Relevé de notes (PDF)</button><button class="btn" onclick="bulDialog()">Bulletins (PDF)</button><label>Recherche<input type="search" data-rf="1" placeholder="Nom ou prénom…" oninput="rowFilter(this,'#avglist')"></label><span class="sub rc"></span></div>`)+
   `<div class="card tw" id="avglist">${list.length?`<table><thead><tr><th>Élève</th><th>Classe</th><th>Notes prises en compte</th><th>Moyenne /20</th><th>Appréciation</th><th></th></tr></thead><tbody>${list.map(s=>{const c=calc(s.id);return`<tr data-q="${esc(norm(nmOf(s)+' '+s.cls))}"><td>${esc(s.first)} ${esc(s.last)}</td><td>${esc(s.cls)}</td><td>${c.inc.length}</td><td class="${c.avg==null?'':c.avg<10?'bad':'ok'}"><b>${fmt(c.avg)}</b></td><td class="sub" style="white-space:normal;min-width:280px">${esc(genAvg(s))}</td><td><button class="btn ghost sm" onclick="detail('${s.id}')">Détail</button> <button class="btn ghost sm" onclick="pdfBul(['${s.id}'],'')">Bulletin</button></td></tr>`}).join('')}</tbody></table>`:'<p class="empty">Aucun élève à afficher.</p>'}</div>`;
 },
 ct(){return ctView()},
@@ -525,6 +525,108 @@ function pdfStu(creds){const L=inCls(cls);if(!L.length)return toast('Aucun élè
   const rows=L.map((s,i)=>creds?[i+1,s.last,s.first,s.cls,s.user||'',s.pwd||'']:[i+1,s.last,s.first,s.cls,s.g==='F'?'Fille':s.g==='M'?'Garçon':'',s.dob?dateFr(s.dob):'',age(s.dob)==null?'':age(s.dob)]);
   pdf((creds?'Identifiants des élèves':'Liste des élèves')+(cls?' - '+cls:''),hd,rows,(creds?'identifiants':'liste-eleves')+(cls?'-'+slugF(cls):'')+'.pdf',{sub:L.length+' élève(s)'})}
 function pdfAtt(){const r=monRows();if(r.length<2)return toast('Aucun élève');pdf('Absences du mois '+hm+(cls?' - '+cls:''),r[0],r.slice(1),'absences-'+hm+'.pdf',{land:true,cols:{4:{cellWidth:90}}})}
+/* ===== Feuille de classe (Excel / PDF) : même présentation que le modèle « 2BAC ECO S1 » ===== */
+const FEU_T=[[18,'Excellent travail.','Félicitations !'],[16,'Très bon travail.','Continue !'],[14,'Bon niveau.','Continuer ainsi.'],[12,'Satisfaisant.','Continuer ainsi.'],[10,'Moyen.','Poursuivre les efforts.'],[8,'Insuffisant.','Travail plus régulier.'],[5,'Faible.','Plus de révisions.'],[-1,'Très faible.','Plus d’efforts.']];
+function feuilleObs(s,any,av,ab,miss){
+  if(!any||av==null)return s.g==='F'?'Non évaluée.':'Non évalué.';
+  const t=FEU_T.find(x=>av>=x[0]);let tail=t[2];
+  if(miss.length)tail=miss.join(', ')+' à régulariser.';else if(ab>=2&&av<12)tail='Plus d’assiduité.';
+  return t[1]+' '+tail}
+function feuilleData(c,sem,o){
+  const L=inCls(c),r2=v=>Math.round(v*100)/100,num=g=>{const n=parseFloat(g);return g===undefined||g===''||isNaN(n)?null:n};
+  const A=S.assign.filter(a=>!a.archived&&(a.cls===c||a.cls==='toutes')&&(!sem||(a.sem||'S1')===sem)).sort((a,b)=>(a.due||a.given||'').localeCompare(b.due||b.given||'')||String(a.title).localeCompare(String(b.title),'fr'));
+  const ct=A.filter(a=>a.type==='controle'),ex=A.filter(a=>a.type==='examen'),dv=A.filter(a=>a.type==='devoir'||a.type==='projet'),cb=A.filter(a=>a.type==='correction');
+  const nC=Math.max(2,ct.length),nE=Math.max(1,ex.length);
+  const cols=[['N°',5],['Nom',22],['Prénom',18],['Devoirs',9],['Cahier /\nLeçons',9],['Participation',12],['Comportement',14],['Absences',10]].map(([h,w])=>({h,w}));
+  for(let i=0;i<nC;i++)cols.push({h:'Contrôle '+(i+1),w:10});
+  for(let i=0;i<nE;i++)cols.push({h:nE>1?'Examen '+(i+1):'Examen',w:10});
+  cols.push({h:sem?'Moyenne\n'+sem:'Moyenne\nannée',w:10},{h:'Observations',w:40});
+  const abm={};Object.keys(S.att).forEach(k=>{if(S.att[k]==='absent'&&inSem(k.slice(0,10),sem)){const id=k.slice(11);abm[id]=(abm[id]||0)+1}});
+  const mean=(s,list)=>{const v=list.map(a=>num(S.grades[a.id+'_'+s.id])).filter(n=>n!=null);return v.length?r2(v.reduce((p,n)=>p+n,0)/v.length):''};
+  const asm=(s,a)=>{const n=num(S.grades[a.id+'_'+s.id]);if(n!=null)return r2(n);return a.due&&S.att[a.due+'_'+s.id]==='absent'?'ABSENT':''};
+  const rows=L.map((s,i)=>{
+    const cc=[],miss=[];
+    for(let j=0;j<nC;j++){const v=ct[j]?asm(s,ct[j]):'';cc.push(v);if(v==='ABSENT')miss.push('Contrôle '+(j+1))}
+    for(let j=0;j<nE;j++){const v=ex[j]?asm(s,ex[j]):'';cc.push(v);if(v==='ABSENT')miss.push(nE>1?'Examen '+(j+1):'Examen')}
+    const any=A.some(a=>num(S.grades[a.id+'_'+s.id])!=null),av=calc(s.id,sem).avg,n=abm[s.id]||0;
+    return[i+1,String(s.last||'').toUpperCase(),s.first||'',mean(s,dv),mean(s,cb),'','',n].concat(cc,[av==null?'':r2(av),feuilleObs(s,any,av,n,miss)])});
+  const n=L.length,semL=sem?'SEMESTRE '+sem.slice(1):'ANNÉE SCOLAIRE',niv=(o.niv||'').trim(),dt=new Date(),p=v=>String(v).padStart(2,'0');
+  return{cls:c,cols,rows,
+    title:'CLASSE '+c+'  —  '+semL+(niv?'  —  '+niv:'')+'   ('+n+' élève'+(n>1?'s':'')+')',
+    mat:'Matière :  '+(o.mat||''),ens:'Enseignant(e) :  '+(o.ens||''),
+    date:'Date :  '+p(dt.getDate())+' / '+p(dt.getMonth()+1)+' / '+String(dt.getFullYear()).slice(2),
+    grp:[['ÉLÈVE',1,3],['SUIVI EN CLASSE',4,8],['NOTES  (sur 20)',9,cols.length-1]],
+    foot:'Classe '+c+' - '+(sem?'Semestre '+sem.slice(1):'Année scolaire')}}
+async function feuilleXlsx(ms,file){
+  if(typeof ExcelJS==='undefined')return toast('ExcelJS non chargé : vérifiez la connexion');
+  const wb=new ExcelJS.Workbook(),used=new Set(),K={argb:'FF000000'},th={style:'thin',color:K},md={style:'medium',color:K},BT={top:th,left:th,bottom:th,right:th},BM={top:md,left:md,bottom:md,right:md},GR={type:'pattern',pattern:'solid',fgColor:{argb:'FFD9D9D9'}},F=(sz,b)=>({name:'Arial',size:sz,bold:!!b});
+  ms.forEach(m=>{
+    const nm=String(m.cls).replace(/[\[\]:*?\/\\]/g,' ').trim().slice(0,28)||'Classe';let k=nm,i=2;while(used.has(k))k=nm+' '+i++;used.add(k);
+    const ws=wb.addWorksheet(k),NC=m.cols.length,n=m.rows.length,tot=Math.max(24,n);
+    m.cols.forEach((c,j)=>{ws.getColumn(j+1).width=c.w});
+    ws.mergeCells(1,1,1,NC);for(let j=1;j<=NC;j++)ws.getCell(1,j).border=BM;
+    const t=ws.getCell(1,1);t.value=m.title;t.font=F(13,1);t.alignment={horizontal:'center',vertical:'middle'};ws.getRow(1).height=30;
+    ws.mergeCells(2,1,2,3);
+    [[1,m.mat],[7,m.ens],[NC,m.date]].forEach(([j,v])=>{const c=ws.getCell(2,j);c.value=v;c.font=F(10,1);c.alignment={vertical:'middle'}});ws.getRow(2).height=24;
+    for(let j=1;j<=NC;j++){const c=ws.getCell(3,j);c.fill=GR;c.border=BT}
+    m.grp.forEach(([v,a,b])=>{if(b>a)ws.mergeCells(3,a,3,b);const c=ws.getCell(3,a);c.value=v;c.font=F(9,1);c.alignment={horizontal:'center',vertical:'middle',wrapText:true}});
+    m.cols.forEach((c,j)=>{const x=ws.getCell(4,j+1);x.value=c.h;x.font=F(9,1);x.fill=GR;x.border=BT;x.alignment={horizontal:'center',vertical:'middle',wrapText:true}});ws.getRow(4).height=30;
+    m.rows.forEach((r,i)=>{const row=ws.getRow(5+i);row.height=21.95;r.forEach((v,j)=>{const c=row.getCell(j+1);c.value=v===''?null:v;c.border=BT;const left=j===1||j===2||j===NC-1;c.font=F(10,j===1);c.alignment={horizontal:left?'left':'center',vertical:'middle',wrapText:j===NC-1}})});
+    for(let i=n;i<tot;i++)ws.getRow(5+i).height=21.95;
+    const fr=5+tot+1;ws.getCell(fr,1).value=m.foot;ws.getCell(fr,1).font=F(8);
+    ws.pageSetup={orientation:'landscape',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:tot>26?0:1,margins:{left:.75,right:.75,top:1,bottom:1,header:.3,footer:.3},printArea:'A1:'+ws.getColumn(NC).letter+fr,printTitlesRow:'3:4'};
+  });
+  await dl(file,await wb.xlsx.writeBuffer());
+}
+/* PDF : la page est dessinée sur un canvas (le navigateur sait écrire l’arabe), puis placée dans le PDF : même grille que l’Excel */
+function feuillePdf(ms,file){
+  const J=window.jspdf;if(!J||!J.jsPDF)return toast('Générateur PDF non chargé');
+  const d=new J.jsPDF('l','mm','a4'),PW=297,PH=210,M=10,DPI=200,ppp=DPI/72,mm=v=>v/25.4*72,cv=document.createElement('canvas');
+  cv.width=Math.round(PW/25.4*DPI);cv.height=Math.round(PH/25.4*DPI);const x=cv.getContext('2d'),FN='Arial,"Segoe UI",Tahoma,"Noto Sans Arabic",sans-serif',RH=21.95;
+  const wrap=(t,w)=>{const out=[];String(t).split('\n').forEach(par=>{let ln='';par.split(' ').forEach(wd=>{const tr=ln?ln+' '+wd:wd;if(ln&&x.measureText(tr).width>w){out.push(ln);ln=wd}else ln=tr});out.push(ln)});return out};
+  const cell=(cx,cy,w,h,txt,o)=>{o=o||{};if(o.fill){x.fillStyle=o.fill;x.fillRect(cx,cy,w,h)}
+    if(o.bd!==false){x.lineWidth=o.lw||.5;x.strokeStyle='#000';x.strokeRect(cx,cy,w,h)}
+    if(txt===''||txt==null)return;x.fillStyle='#000';x.font=(o.b?'bold ':'')+(o.sz||10)+'px '+FN;x.textBaseline='middle';
+    const al=o.al||'center',pad=3,lines=o.wrap?wrap(txt,w-2*pad):[String(txt)],lh=(o.sz||10)*1.25,y0=cy+h/2-(lines.length-1)*lh/2;
+    x.textAlign=al;lines.forEach((ln,i)=>x.fillText(ln,al==='left'?cx+(o.bd===false?0:pad):al==='right'?cx+w-pad:cx+w/2,y0+i*lh))};
+  let first=true;
+  ms.forEach(m=>{
+    const NC=m.cols.length,cw=m.cols.map(c=>c.w*5.25+3.75),W0=cw.reduce((a,b)=>a+b,0),xs=cw.map((_,i)=>cw.slice(0,i).reduce((a,b)=>a+b,0)),k=Math.min(1,mm(PW-2*M)/W0);
+    const tot=Math.max(24,m.rows.length),per=Math.max(8,Math.floor((mm(PH-2*M)/k-99-26)/RH)),pages=Math.ceil(tot/per);
+    for(let p=0;p<pages;p++){
+      x.setTransform(1,0,0,1,0,0);x.fillStyle='#fff';x.fillRect(0,0,cv.width,cv.height);
+      x.setTransform(ppp*k,0,0,ppp*k,mm(M)*ppp,mm(M)*ppp);
+      cell(0,0,W0,30,m.title,{b:1,sz:13,lw:1.5});
+      cell(0,30,xs[3],24,m.mat,{bd:false,b:1,al:'left'});cell(xs[6],30,cw[6]*2,24,m.ens,{bd:false,b:1,al:'left'});cell(xs[NC-1],30,cw[NC-1],24,m.date,{bd:false,b:1,al:'left'});
+      const G='#D9D9D9';
+      m.grp.forEach(([v,a,b])=>cell(xs[a-1],54,xs[b-1]+cw[b-1]-xs[a-1],15,v,{fill:G,b:1,sz:9}));
+      cell(xs[NC-1],54,cw[NC-1],15,'',{fill:G});
+      m.cols.forEach((c,j)=>cell(xs[j],69,cw[j],30,c.h,{fill:G,b:1,sz:9,wrap:1}));
+      const a=p*per,b=Math.min(tot,a+per);
+      for(let i=a;i<b&&i<m.rows.length;i++){const y=99+(i-a)*RH;m.rows[i].forEach((v,j)=>cell(xs[j],y,cw[j],RH,v,{al:j===1||j===2||j===NC-1?'left':'center',b:j===1,wrap:j===NC-1}))}
+      const fy=99+(b-a)*RH+11;cell(0,fy,W0/2,12,m.foot,{bd:false,sz:8,al:'left'});if(pages>1)cell(W0/2,fy,W0/2,12,'Page '+(p+1)+'/'+pages,{bd:false,sz:8,al:'right'});
+      if(!first)d.addPage();first=false;
+      d.addImage(cv.toDataURL('image/jpeg',.92),'JPEG',0,0,PW,PH);
+    }
+  });
+  x.setTransform(1,0,0,1,0,0);
+  dl(file,d.output('arraybuffer'));
+}
+function feuilleDlg(){
+  const cl=classes();if(!cl.length)return toast('Aucune classe : ajoutez d’abord des élèves');
+  const fs=S.fs||{},cnt={};S.assign.forEach(a=>{if(a.subject)cnt[a.subject]=(cnt[a.subject]||0)+1});
+  const subj=fs.mat||Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0]||'',sd=semDef();
+  $('#dlg').innerHTML=`<h2>Feuille de classe</h2><p class="sub" style="margin-bottom:10px">Même présentation que votre modèle : élèves, suivi en classe, contrôles, examen, moyenne et observations, remplis avec les données de l’application. Participation et Comportement restent vides (à compléter).</p><div class="row"><label>Classe<select id="fc"><option value="">Toutes les classes (une feuille par classe)</option>${opts(cl,cls)}</select></label><label>Période<select id="fp"><option value="S1"${sd==='S1'?' selected':''}>Semestre 1</option><option value="S2"${sd==='S2'?' selected':''}>Semestre 2</option><option value="">Année scolaire</option></select></label></div><div class="row" style="margin-top:8px"><label>Matière<input id="fm" value="${esc(subj)}"></label><label>Enseignant(e)<input id="fe" value="${esc(fs.ens||SIGN)}"></label><label>Niveau (facultatif)<input id="fn" placeholder="ex. 2ème Bac" value="${esc((fs.niv&&fs.niv[cls])||'')}"></label></div><div style="text-align:end;margin-top:14px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="btn ghost" onclick="closeD()">Annuler</button><button class="btn" onclick="feuilleGo('pdf')">PDF</button><button class="btn acc" onclick="feuilleGo('xlsx')">Excel</button></div>`;
+  $('#dlg').showModal();
+}
+async function feuilleGo(kind){
+  const c=$('#fc').value,sem=$('#fp').value,mat=$('#fm').value.trim(),ens=$('#fe').value.trim(),niv=$('#fn').value.trim();
+  S.fs=Object.assign({},S.fs||{},{mat,ens});S.fs.niv=Object.assign({},S.fs.niv||{});if(c&&niv)S.fs.niv[c]=niv;save();
+  const cl=c?[c]:classes(),ms=cl.map(k=>feuilleData(k,sem,{mat,ens,niv:c?niv:(S.fs.niv[k]||niv)}));
+  closeD();
+  const f='Feuille_'+(c?slugF(c):'classes')+'_'+(sem||'annee');
+  if(kind==='pdf')feuillePdf(ms,f+'.pdf');else await feuilleXlsx(ms,f+'.xlsx');
+}
 function pdfBul(ids,sem){
   const J=window.jspdf;if(!J||!J.jsPDF)return toast('Générateur PDF non chargé');
   const L=(ids||[]).map(id=>S.students.find(s=>s.id===id)).filter(Boolean);if(!L.length)return toast('Sélectionnez au moins un élève');
