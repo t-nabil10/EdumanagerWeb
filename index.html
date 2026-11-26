@@ -142,7 +142,9 @@ function localISO(){const n=new Date();return n.getFullYear()+'-'+String(n.getMo
 let view='dash',cls='',date=localISO();
 let attTab='in',hs='',hm=date.slice(0,7),wd=date;
 const classes=()=>[...new Set(S.students.map(s=>s.cls))].sort();
-const inCls=c=>S.students.filter(s=>!c||s.cls===c);
+/* Ordre des listes : « liste » = ordre de S.students (celui du fichier Excel importé), ou alphabétique (nom / prénom) */
+function ordList(l){const m=S.ordMode||'liste';if(m==='liste')return l;const c=(x,y)=>(x||'').localeCompare(y||'','fr',{sensitivity:'base'});return l.slice().sort((a,b)=>c(a.cls,b.cls)||(m==='prenom'?c(a.first,b.first)||c(a.last,b.last):c(a.last,b.last)||c(a.first,b.first)))}
+const inCls=c=>ordList(S.students.filter(s=>!c||s.cls===c));
 const opts=(list,sel,all)=>(all?`<option value="">${all}</option>`:'')+list.map(v=>`<option value="${esc(v)}"${v===sel?' selected':''}>${esc(v)}</option>`).join('');
 let tt;function toast(m,undo){const t=$('#toast');t.textContent=m;if(undo){const b=document.createElement('button');b.type='button';b.textContent='Annuler';b.onclick=()=>{clearTimeout(tt);t.classList.remove('show','act');undo()};t.append(b)}t.classList.toggle('act',!!undo);t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show','act'),undo?8000:2200)}
 /* Annuler : photo complète des données avant une suppression / un import, restaurée en un clic */
@@ -190,6 +192,7 @@ students(){
   return head('Élèves',list.length+' élève(s)',`<div class="row">${clsPick('Toutes les classes')}<label>Recherche<input type="search" id="sq" placeholder="Nom, prénom, classe, identifiant…" value="${esc(sq)}" oninput="searchStu(this.value)"></label><span class="sub" id="sqc">${sq?shown().length+' résultat(s)':''}</span></div>`)+
   `<div class="card"><h2>Ajouter un élève</h2><div class="row"><label>Prénom<input id="f1"></label><label>Nom<input id="f2"></label><label>Classe<input id="f3" list="cl" placeholder="ex. 3AC-1" value="${esc(cls)}"></label><label>Genre<select id="f4"><option value="">—</option><option value="F">Fille</option><option value="M">Garçon</option></select></label><label>Date de naissance<input type="date" id="f5"></label><datalist id="cl">${classes().map(c=>`<option>${esc(c)}</option>`).join('')}</datalist><button class="btn acc" onclick="addStu()">Ajouter</button></div></div>`+
   `<div class="card"><h2>Importer une liste d’élèves</h2><p class="sub" style="margin-bottom:12px">Un fichier Excel (.xlsx) ou CSV. Colonnes obligatoires : Prénom, Nom, Classe. Colonnes facultatives : Genre (F ou M) et Date de naissance (jj/mm/aaaa). Partez du modèle pour éviter les erreurs.</p><div class="row"><label>Fichier à importer<input type="file" accept=".xlsx,.xls,.csv,.txt" onchange="pickFile(this)"></label><button class="btn ghost" onclick="tpl('xlsx')">Modèle Excel</button><button class="btn ghost" onclick="tpl('csv')">Modèle CSV</button></div></div>`+
+  `<div class="card"><h2>Ordre des listes</h2><p class="sub" style="margin-bottom:12px">Cet ordre s’applique partout : appel, notes des devoirs, exports Excel/PDF, Moodle, bulletins. Pour imposer votre ordre : exportez la liste (Excel), classez les lignes comme vous voulez, puis rechargez le fichier ici. Colonnes : Prénom, Nom, Classe.</p><div class="row"><label>Ordre d’affichage<select onchange="S.ordMode=this.value;save();keep()">${ORDOPT()}</select></label><label>Réordonner depuis un fichier Excel / CSV<input type="file" accept=".xlsx,.xls,.csv,.txt" onchange="pickOrder(this)"></label></div></div>`+
   `<div class="card"><h2>Identifiants et nettoyage</h2><div class="row"><button class="btn" onclick="genCreds()">Générer les identifiants</button><button class="btn ghost" onclick="expList()">Exporter la liste (Excel)</button><button class="btn ghost" onclick="pdfStu()">Liste (PDF)</button><button class="btn ghost" onclick="pdfStu(1)">Identifiants (PDF)</button><button class="btn del" onclick="delClass()">Supprimer la classe affichée</button><button class="btn del" onclick="delAll()">Supprimer tous les élèves</button></div><p class="sub" style="margin-top:10px">Format : identifiant prénom.nom, mot de passe Nom@12345. La génération s’applique à la classe choisie dans le filtre (ou à tous les élèves).</p></div>`+
   `<div id="slist">${stuList()}</div>`;
 },
@@ -242,10 +245,12 @@ function allPres(){const list=inCls(cls);if(draftOn(list)){delete attDraft[date+
 function addWork(){const t=$('#w1').value.trim();if(!t)return toast('Donnez un titre à l’évaluation');const ty=$('#w2').value,same=SAME.includes(ty);S.assign.push({id:uid(),title:t,type:ty,cls:$('#w3').value,subject:$('#w4').value.trim(),given:same?'':$('#w5').value,due:same?$('#w7').value:$('#w6').value,sem:$('#w8').value,archived:false});semLast=$('#w8').value;save();render();toast('Évaluation créée')}
 function arch(id){const a=S.assign.find(x=>x.id===id);a.archived=!a.archived;save();keep()}
 async function delWork(id){if(!await ask('Supprimer cette évaluation et ses notes ?','Supprimer'))return;const u=snap();S.assign=S.assign.filter(a=>a.id!==id);Object.keys(S.grades).filter(k=>k.startsWith(id+'_')).forEach(k=>delete S.grades[k]);Object.keys(CM()).filter(k=>k.startsWith(id+'_')).forEach(k=>{delete CM()[k];delete CMM()[k]});save();keep();toast('Évaluation supprimée',undoer(u))}
+const gOrd=ordList;
+function gSortSet(id,v){S.ordMode=v;save();grades(id)}
 function grades(id){
-  const a=S.assign.find(x=>x.id===id),list=S.students.filter(s=>a.cls==='toutes'||s.cls===a.cls);
-  $('#dlg').innerHTML=`<h2>${esc(a.title)}</h2><p class="sub">${TN[a.type]} · ${a.type==='correction'?'choisissez une appréciation par cahier':'notes sur 20, appréciation générée automatiquement pour chaque élève (modifiable)'}. Laissez vide si l’élève n’a pas de note.</p><div class="row" style="margin:8px 0"><label style="flex:1">Recherche<input type="search" placeholder="Nom ou prénom…" oninput="rowFilter(this,'#gtbl')"></label><span class="sub rc"></span></div><div id="gtbl" style="max-height:56vh;overflow:auto">${list.length?`<table>${list.map(s=>`<tr data-q="${esc(norm(nmOf(s)))}"><td>${esc(s.first)} ${esc(s.last)}</td><td>${a.type==='correction'?`<select onchange="setG('${id}','${s.id}',this.value,this)"><option value="">—</option>${CORR.map(([l,v])=>`<option value="${v}"${parseFloat(S.grades[id+'_'+s.id])===v?' selected':''}>${esc(l)}</option>`).join('')}</select>`:`<input type="number" min="0" max="20" step="0.25" style="width:90px" value="${esc(S.grades[id+'_'+s.id]??'')}" oninput="setG('${id}','${s.id}',this.value,this)">`}</td><td>${a.type==='correction'?'':`<input class="ap" data-s="${s.id}" style="width:100%;min-width:300px" placeholder="Appréciation" value="${esc(S.grades[id+'_'+s.id]===undefined?'':((CMM()[id+'_'+s.id]&&CM()[id+'_'+s.id])||genNote(S.grades[id+'_'+s.id],s,id)))}" oninput="setC('${id}','${s.id}',this.value)">`}</td></tr>`).join('')}</table>`:'<p class="empty">Aucun élève dans cette classe.</p>'}</div><div style="text-align:end;margin-top:14px"><button class="btn ghost" onclick="regenAll('${id}')">Régénérer les appréciations</button> <button class="btn" onclick="closeD()">Terminer</button></div>`;
-  $('#dlg').showModal();
+  const a=S.assign.find(x=>x.id===id),list=gOrd(S.students.filter(s=>a.cls==='toutes'||s.cls===a.cls));
+  $('#dlg').innerHTML=`<h2>${esc(a.title)}</h2><p class="sub">${TN[a.type]} · ${a.type==='correction'?'choisissez une appréciation par cahier':'notes sur 20, appréciation générée automatiquement pour chaque élève (modifiable)'}. Laissez vide si l’élève n’a pas de note.</p><div class="row" style="margin:8px 0"><label style="flex:1">Recherche<input type="search" placeholder="Nom ou prénom…" oninput="rowFilter(this,'#gtbl')"></label><label>Ordre des listes<select onchange="gSortSet('${id}',this.value)">${ORDOPT()}</select></label><span class="sub rc"></span></div><div id="gtbl" style="max-height:56vh;overflow:auto">${list.length?`<table>${list.map(s=>`<tr data-q="${esc(norm(nmOf(s)))}"><td>${esc(s.first)} ${esc(s.last)}</td><td>${a.type==='correction'?`<select onchange="setG('${id}','${s.id}',this.value,this)"><option value="">—</option>${CORR.map(([l,v])=>`<option value="${v}"${parseFloat(S.grades[id+'_'+s.id])===v?' selected':''}>${esc(l)}</option>`).join('')}</select>`:`<input type="number" min="0" max="20" step="0.25" style="width:90px" value="${esc(S.grades[id+'_'+s.id]??'')}" oninput="setG('${id}','${s.id}',this.value,this)">`}</td><td>${a.type==='correction'?'':`<input class="ap" data-s="${s.id}" style="width:100%;min-width:300px" placeholder="Appréciation" value="${esc(S.grades[id+'_'+s.id]===undefined?'':((CMM()[id+'_'+s.id]&&CM()[id+'_'+s.id])||genNote(S.grades[id+'_'+s.id],s,id)))}" oninput="setC('${id}','${s.id}',this.value)">`}</td></tr>`).join('')}</table>`:'<p class="empty">Aucun élève dans cette classe.</p>'}</div><div style="text-align:end;margin-top:14px"><button class="btn ghost" onclick="regenAll('${id}')">Régénérer les appréciations</button> <button class="btn" onclick="closeD()">Terminer</button></div>`;
+  if(!$('#dlg').open)$('#dlg').showModal();
 }
 function setG(a,s,v,el){const k=a+'_'+s,n=parseFloat(v),t=S.assign.find(x=>x.id===a),st=S.students.find(x=>x.id===s);
   if(v===''||isNaN(n)){delete S.grades[k];delete CM()[k];delete CMM()[k]}else{S.grades[k]=Math.min(20,Math.max(0,n));if(t&&t.type!=='correction'&&!CMM()[k])CM()[k]=genNote(S.grades[k],st,a)}
@@ -341,6 +346,40 @@ function preview(rows){
   `<div style="text-align:end;margin-top:14px;display:flex;gap:8px;justify-content:flex-end"><button class="btn ghost" onclick="closeD()">Annuler</button>${ok.length?`<button class="btn acc" onclick="doImport()">Importer ${ok.length} élève(s)</button>`:''}</div>`;
   $('#dlg').showModal();
 }
+const ORDOPT=()=>[['liste','Ordre de ma liste (Excel / ajout)'],['nom','Nom (A→Z)'],['prenom','Prénom (A→Z)']].map(([v,l])=>`<option value="${v}"${(S.ordMode||'liste')===v?' selected':''}>${l}</option>`).join('');
+let ordPend=null;
+function pickOrder(inp){
+  const f=inp.files[0];inp.value='';if(!f)return;
+  const isCsv=/\.(csv|txt)$/i.test(f.name),r=new FileReader();
+  if(!isCsv&&typeof XLSX==='undefined')return toast('Lecteur Excel non chargé : enregistrez le fichier en CSV');
+  r.onload=()=>{try{
+    let aoa;
+    if(isCsv)aoa=csvRows(r.result);
+    else{const wb=XLSX.read(r.result,{type:'array',cellDates:true});aoa=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:''})}
+    orderPreview(readRows(aoa));
+  }catch(e){toast('Fichier illisible : utilisez la liste exportée (Excel)')}};
+  isCsv?r.readAsText(f):r.readAsArrayBuffer(f);
+}
+function orderPreview(rows){
+  const k3=(f,l,c)=>[f,l,c].map(norm).join('|'),k2=(f,l)=>[f,l].map(norm).join('|'),used=new Set(),ordered=[],miss=[];
+  const by3=new Map(),by2=new Map();
+  S.students.forEach(s=>{const a=k3(s.first,s.last,s.cls),b=k2(s.first,s.last),c=k2(s.last,s.first);(by3.get(a)||by3.set(a,[]).get(a)).push(s);(by2.get(b)||by2.set(b,[]).get(b)).push(s);if(c!==b)(by2.get(c)||by2.set(c,[]).get(c)).push(s)});
+  const take=arr=>(arr||[]).find(s=>!used.has(s.id));
+  rows.forEach(r=>{if(!r.f&&!r.l){return}
+    let s=r.c?(take(by3.get(k3(r.f,r.l,r.c)))||take(by3.get(k3(r.l,r.f,r.c)))):null;
+    if(!s&&!r.c){const c1=(by2.get(k2(r.f,r.l))||[]).filter(x=>!used.has(x.id));if(c1.length===1)s=c1[0]}
+    if(s){used.add(s.id);ordered.push(s)}else miss.push(r)});
+  const rest=S.students.filter(s=>!used.has(s.id));
+  ordPend=ordered.concat(rest);
+  $('#dlg').innerHTML=`<h2>Aperçu du nouvel ordre</h2>`+
+  (ordered.length?`<p><b>${ordered.length}</b> élève(s) trouvé(s) dans le fichier : ils seront rangés dans l’ordre du fichier.</p>`:'<p class="empty">Aucun élève du fichier ne correspond à l’application. Vérifiez les colonnes Prénom, Nom, Classe.</p>')+
+  (rest.length&&ordered.length?`<p class="warn">${rest.length} élève(s) absent(s) du fichier : ils seront placés à la fin (ordre actuel conservé) : ${rest.slice(0,6).map(s=>esc(nmOf(s))).join(', ')}${rest.length>6?'…':''}.</p>`:'')+
+  (miss.length&&ordered.length?`<p class="sub">${miss.length} ligne(s) du fichier ignorée(s) (élève inconnu) : ${miss.slice(0,5).map(r=>esc((r.f+' '+r.l).trim())).join(', ')}${miss.length>5?'…':''}.</p>`:'')+
+  (ordered.length?`<div class="tw" style="max-height:34vh;overflow:auto"><table><thead><tr><th>#</th><th>Prénom</th><th>Nom</th><th>Classe</th></tr></thead><tbody>${ordered.slice(0,10).map((s,i)=>`<tr><td>${i+1}</td><td>${esc(s.first)}</td><td>${esc(s.last)}</td><td>${esc(s.cls)}</td></tr>`).join('')}</tbody></table></div>${ordered.length>10?`<p class="sub">… et ${ordered.length-10} autre(s)</p>`:''}`:'')+
+  `<div style="text-align:end;margin-top:14px;display:flex;gap:8px;justify-content:flex-end"><button class="btn ghost" onclick="ordPend=null;closeD()">Annuler</button>${ordered.length?`<button class="btn acc" onclick="doOrder()">Appliquer cet ordre</button>`:''}</div>`;
+  $('#dlg').showModal();
+}
+function doOrder(){if(!ordPend)return;S.students=ordPend;S.ordMode='liste';ordPend=null;save();closeD();toast('Ordre appliqué partout ✓')}
 function doImport(){pend.forEach(r=>S.students.push({id:uid(),first:r.f,last:r.l,cls:r.c,g:r.g,dob:r.dob,created:localISO()}));const n=pend.length;pend=[];save();closeD();toast(n+' élève(s) importé(s)')}
 const isO=v=>!!v&&typeof v==='object'&&!Array.isArray(v);
 function validState(d){return isO(d)&&Array.isArray(d.students)&&d.students.every(x=>isO(x)&&x.id&&typeof x.first==='string'&&typeof x.last==='string'&&typeof x.cls==='string')&&(d.assign===undefined||(Array.isArray(d.assign)&&d.assign.every(a=>isO(a)&&a.id)))&&(d.grades===undefined||isO(d.grades))&&(d.att===undefined||isO(d.att))&&(d.archives===undefined||Array.isArray(d.archives))}
@@ -405,7 +444,7 @@ const SIGN='Pr. Nabil TAROUS';
 async function expWork(id){
   if(typeof ExcelJS==='undefined')return toast('ExcelJS non chargé : vérifiez la connexion');
   const a=S.assign.find(x=>x.id===id);if(!a)return toast('Devoir introuvable');
-  const cor=a.type==='correction',L=S.students.filter(s=>a.cls==='toutes'||s.cls===a.cls);
+  const cor=a.type==='correction',L=gOrd(S.students.filter(s=>a.cls==='toutes'||s.cls===a.cls));
   const wb=new ExcelJS.Workbook(),ws=wb.addWorksheet(('Devoir - '+a.title).replace(/[^A-Za-z0-9À-ÿ _.()-]/g,' ').trim().slice(0,31));
   ws.columns=[{width:15},{width:15},{width:12},{width:12},{width:12},{width:52},{width:15}];
   const th={style:'thin'},box={top:th,left:th,bottom:th,right:th},r2=v=>Math.round(v*100)/100;
@@ -652,12 +691,12 @@ function mdlTog(id,c){if(c)X().nodone[id]=true;else delete X().nodone[id];save()
 function mdlNote(id,v){const m=X(),o=m.nodone[id]?m.notN:m.doneN;if(v==='')delete o[id];else o[id]=v;save()}
 function mdlReset(){X().nodone={};save();keep()}
 function mdlNotes(){
-  const m=M(),les=lesById(m.lesId),x=X(),L=cls?inCls(cls).slice().sort((a,b)=>(a.last+a.first).localeCompare(b.last+b.first,'fr')):[],nd=L.filter(s=>x.nodone[s.id]).length;
+  const m=M(),les=lesById(m.lesId),x=X(),L=cls?inCls(cls):[],nd=L.filter(s=>x.nodone[s.id]).length;
   return head('Sélection & Notes','Qui a fait les exercices ? Notes et feedbacks pour l’export Moodle',clsPick('Choisir une classe'))+
   `<div class="card"><div class="row"><label style="flex:1;min-width:220px">Leçon du cahier de texte<select onchange="selLes(this.value)"><option value="">Saisie libre</option>${lesSel(m.lesId)}</select></label><label style="flex:1;min-width:220px">Titre du cours / de la leçon<input value="${esc(les?les.title:m.lesson)}" placeholder="Ex : Les fractions" ${les?'disabled':''} oninput="mdlSet('lesson',this.value)"></label><label style="flex:1;min-width:200px">Feedback « ont fait »<input value="${esc(m.doneFb)}" oninput="mdlSet('doneFb',this.value)"></label><label style="flex:1;min-width:200px">Feedback « n’ont pas fait »<input value="${esc(m.notDoneFb)}" oninput="mdlSet('notDoneFb',this.value)"></label></div><div class="row" style="margin-top:10px"><label>Note par défaut « n’ont pas fait »<input type="number" step="0.5" min="0" value="${m.defNot}" onchange="mdlSet('defNot',this.value);keep()"></label><label>Note par défaut « ont fait » (si vide)<input type="number" step="0.5" min="0" value="${m.defDone}" onchange="mdlSet('defDone',this.value);keep()"></label></div></div>`+
   (L.length?`<div class="card tw" id="nlist"><div class="row" style="margin-bottom:10px;justify-content:space-between;align-items:end"><span><b class="ok">✅ ${L.length-nd}</b> ont fait · <b class="bad">❌ ${nd}</b> n’ont pas fait</span><label style="flex:1;min-width:180px">Recherche<input type="search" data-rf="1" placeholder="Nom ou prénom…" oninput="rowFilter(this,'#nlist')"></label><span class="sub rc"></span><button class="btn ghost sm" onclick="mdlReset()">Tous ont fait</button></div><table><thead><tr><th>#</th><th>Élève</th><th>N’a pas fait</th><th>Note</th></tr></thead><tbody>${L.map((s,i)=>{const no=x.nodone[s.id],v=no?x.notN[s.id]:x.doneN[s.id];return`<tr data-q="${esc(norm(nmOf(s)+' '+(s.user||udef(s))))}"><td>${i+1}</td><td>${esc(nmOf(s))} <span class="sub">(${esc(s.user||udef(s))})</span></td><td><input type="checkbox" ${no?'checked':''} onchange="mdlTog('${s.id}',this.checked)"></td><td><input type="number" step="0.5" min="0" style="width:90px" value="${v==null?'':esc(v)}" placeholder="${no?m.defNot:m.defDone}" oninput="mdlNote('${s.id}',this.value)"></td></tr>`}).join('')}</tbody></table></div>`:'<div class="card"><p class="empty">Choisissez une classe pour sélectionner les élèves.</p></div>');
 }
-const mPool=sc=>(sc==='a'?S.students:inCls(cls)).slice().sort((a,b)=>a.cls.localeCompare(b.cls,'fr')||(a.last+a.first).localeCompare(b.last+b.first,'fr'));
+const mPool=sc=>(sc==='a'?ordList(S.students.slice()):inCls(cls));
 let mnRows=[],mnCol='',mstu=[];
 function mdlCsv(){return head('CSV Moodle','Notes d’exercices et liste des élèves au format Moodle',clsPick('Toutes les classes'))+
   `<div class="card"><h2>Export des notes</h2><p class="sub" style="margin-bottom:12px">Une ligne par élève : user, note et feedback. Choisissez la source : l’onglet « Sélection & Notes » (exercices faits ou non) ou les notes d’un devoir.</p><div class="row"><label style="flex:1;min-width:230px">Source des notes<select id="ms0">${srcOpts()}</select></label><label>Nom de la colonne (Moodle)<input id="ms5" placeholder="Automatique" style="width:190px"></label><label>Classes<select id="ms1"><option value="c">Classe choisie (ou toutes si aucune)</option><option value="a">Toutes les classes</option></select></label><button class="btn acc" onclick="mnGen()">Générer l’aperçu</button></div><div id="mnBox" style="margin-top:12px"></div></div>`+
@@ -814,7 +853,7 @@ function pdfHist(){const r=recs().filter(x=>{const s=S.students.find(y=>y.id===x
 function pdfWork(id){const J=window.jspdf;if(!J||!J.jsPDF)return toast('Générateur PDF non chargé');
   const a=S.assign.find(x=>x.id===id);if(!a)return toast('Devoir introuvable');
   /* même mise en page que l’export Excel du devoir */
-  const cor=a.type==='correction',L=S.students.filter(s=>a.cls==='toutes'||s.cls===a.cls),r2=v=>Math.round(v*100)/100;
+  const cor=a.type==='correction',L=gOrd(S.students.filter(s=>a.cls==='toutes'||s.cls===a.cls)),r2=v=>Math.round(v*100)/100;
   const d=new J.jsPDF(),W=d.internal.pageSize.getWidth(),H=d.internal.pageSize.getHeight();
   d.setTextColor(0,0,0);d.setFont('helvetica','bold');d.setFontSize(15);d.text('DEVOIR : '+a.title,W/2,18,{align:'center'});
   d.setFont('helvetica','italic');d.setFontSize(9);d.setTextColor(102,102,102);d.text('Généré le '+new Date().toLocaleDateString('fr-FR'),W/2,25,{align:'center'});
@@ -834,13 +873,13 @@ function pdfWork(id){const J=window.jspdf;if(!J||!J.jsPDF)return toast('Généra
   const nP=d.getNumberOfPages();if(nP>1)for(let i=1;i<=nP;i++){d.setPage(i);d.setFont('helvetica','normal');d.setFontSize(8);d.setTextColor(120,120,120);d.text('Page '+i+'/'+nP,W-14,H-6,{align:'right'})}
   const safe=t=>String(t||'').replace(/[^a-zA-Z0-9]/g,'_');
   dl('Devoir_'+safe(a.title)+'_'+safe(a.cls)+'_'+localISO()+'.pdf',d.output('arraybuffer'))}
-function pdfReleve(){if(!cls)return toast('Choisissez une classe dans le filtre');const L=inCls(cls);if(!L.length)return toast('Aucun élève');
+function pdfReleve(){if(!cls)return toast('Choisissez une classe dans le filtre');const L=gOrd(inCls(cls));if(!L.length)return toast('Aucun élève');
   const A=S.assign.filter(a=>!a.archived&&(a.cls==='toutes'||a.cls===cls)).sort((a,b)=>(a.sem||'S1').localeCompare(b.sem||'S1')||(a.due||'').localeCompare(b.due||''));
   if(!A.length)return toast('Aucun devoir pour cette classe');
   const sh=t=>t.replace('Devoir surveillé (DS)','DS').replace('Devoir maison (DM)','DM').replace('Correction des cahiers','Cahiers').slice(0,18);
   pdf('Relevé de notes - '+cls,['N°','Élève',...A.map(a=>sh(a.title)),'Moyenne'],L.map((s,i)=>{const m=calc(s.id).avg;return[i+1,nmOf(s),...A.map(a=>{const g=S.grades[a.id+'_'+s.id];return g===undefined?'-':g}),m==null?'-':fmt(m)]}),'releve-'+slugF(cls)+'.pdf',{land:true,fs:8,sub:A.length+' évaluation(s)',foot:'- : pas de note'})}
 let bulSel=new Set(),bulCls='',bulSem='',bulQ='';
-const bulShown=()=>{const t=norm(bulQ).split(' ').filter(Boolean);return S.students.filter(s=>(!bulCls||s.cls===bulCls)&&t.every(x=>norm(nmOf(s)+' '+s.cls).includes(x))).sort((a,b)=>a.cls.localeCompare(b.cls,'fr')||(a.last+a.first).localeCompare(b.last+b.first,'fr'))};
+const bulShown=()=>{const t=norm(bulQ).split(' ').filter(Boolean);return ordList(S.students.filter(s=>(!bulCls||s.cls===bulCls)&&t.every(x=>norm(nmOf(s)+' '+s.cls).includes(x))))};
 function bulCount(){const b=$('#bulgo');if(b){b.textContent='Générer le PDF ('+bulSel.size+' élève'+(bulSel.size>1?'s':'')+')';b.disabled=!bulSel.size}}
 function bulList(){const L=bulShown();$('#bulbox').innerHTML=L.length?L.map(s=>`<label class="chk"><input type="checkbox" ${bulSel.has(s.id)?'checked':''} onchange="bulTog('${s.id}',this.checked)"><span>${esc(nmOf(s))}</span><span class="pill cl">${esc(s.cls)}</span></label>`).join(''):'<p class="empty">Aucun élève.</p>';bulCount()}
 function bulTog(id,c){if(c)bulSel.add(id);else bulSel.delete(id);bulCount()}
@@ -917,7 +956,7 @@ function planLes(){const c=$('#p1').value,s=$('#p2').value,all=$('#p3').checked;
   const slots=[];for(let k=0;k<550;k++){const d=addD(s,k);if(offDay(d))continue;const dw=new Date(d+'T00:00:00Z').getUTCDay()||7;T.filter(z=>z.day===dw).forEach(()=>slots.push(d))}
   let p=0,n=0,last='';for(const l of L){const k=Math.max(1,l.n||1);if(p+k>slots.length)break;l.from=slots[p];l.to=slots[p+k-1];l.sem=semOf(l.from);last=l.to;p+=k;n++}
   save();closeD();toast(n+' leçon(s) planifiée(s)'+(last?' jusqu’au '+dateFr(last):'')+(n<L.length?' ('+(L.length-n)+' restante(s) hors période)':''))}
-function exDlg(id){const l=lesById(id);if(!l)return;const ex=lesEx(l),L=S.students.filter(s=>s.cls===l.cls),m=M();
+function exDlg(id){const l=lesById(id);if(!l)return;const ex=lesEx(l),L=inCls(l.cls),m=M();
   $('#dlg').innerHTML=`<h2>Exercices : ${esc(l.title)}</h2><p class="sub">Classe ${esc(l.cls)} · cochez les élèves qui <b>n’ont pas fait</b> les exercices. Ces données alimentent « Sélection & Notes » et l’export CSV Moodle.</p>${L.length?`<div class="row" style="margin:10px 0;justify-content:space-between"><span id="exc">${exCount(l)}</span><button class="btn ghost sm" onclick="exReset('${id}')">Tous ont fait</button></div><div style="max-height:44vh;overflow:auto"><table><thead><tr><th>#</th><th>Élève</th><th>N’a pas fait</th><th>Note</th></tr></thead><tbody>${L.map((s,i)=>{const no=ex.nodone[s.id],v=no?ex.notN[s.id]:ex.doneN[s.id];return`<tr><td>${i+1}</td><td>${esc(nmOf(s))}</td><td><input type="checkbox" ${no?'checked':''} onchange="exTog('${id}','${s.id}',this.checked,this)"></td><td><input type="number" step="0.5" min="0" style="width:80px" value="${v==null?'':esc(v)}" placeholder="${no?m.defNot:m.defDone}" oninput="exNote('${id}','${s.id}',this.value)"></td></tr>`}).join('')}</tbody></table></div>`:'<p class="empty">Aucun élève dans cette classe.</p>'}<div style="text-align:end;margin-top:14px;display:flex;gap:8px;justify-content:flex-end"><button class="btn ghost" onclick="goNotes('${id}')">Ouvrir Sélection & Notes</button><button class="btn" onclick="closeD()">Terminer</button></div>`;
   const d=$('#dlg');if(!d.open)d.showModal()}
 function exCount(l){const ex=lesEx(l),L=S.students.filter(s=>s.cls===l.cls),nd=L.filter(s=>ex.nodone[s.id]).length;return `<b class="ok">✅ ${L.length-nd}</b> ont fait · <b class="bad">❌ ${nd}</b> n’ont pas fait`}
