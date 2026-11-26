@@ -549,7 +549,7 @@ function feuilleData(c,sem,o){
     for(let j=0;j<nC;j++){const v=ct[j]?asm(s,ct[j]):'';cc.push(v);if(v==='ABSENT')miss.push('Contrôle '+(j+1))}
     for(let j=0;j<nE;j++){const v=ex[j]?asm(s,ex[j]):'';cc.push(v);if(v==='ABSENT')miss.push(nE>1?'Examen '+(j+1):'Examen')}
     const any=A.some(a=>num(S.grades[a.id+'_'+s.id])!=null),av=calc(s.id,sem).avg,n=abm[s.id]||0;
-    return[i+1,String(s.last||'').toUpperCase(),s.first||'',mean(s,dv),mean(s,cb),svv(sem,s.id,'p'),svv(sem,s.id,'c'),n].concat(cc,[av==null?'':r2(av),feuilleObs(s,any,av,n,miss)])});
+    return[i+1,String(s.last||'').toUpperCase(),s.first||'',mean(s,dv),mean(s,cb),svv(sem,s.id,'p'),svv(sem,s.id,'c'),n].concat(cc,[av==null||typeof cc[1]!=='number'?'':r2(av),feuilleObs(s,any,av,n,miss)])});
   const n=L.length,semL=sem?'SEMESTRE '+sem.slice(1):'ANNÉE SCOLAIRE',niv=(o.niv||'').trim(),dt=new Date(),p=v=>String(v).padStart(2,'0');
   return{cls:c,cols,rows,
     title:'CLASSE '+c+'  —  '+semL+(niv?'  —  '+niv:'')+'   ('+n+' élève'+(n>1?'s':'')+')',
