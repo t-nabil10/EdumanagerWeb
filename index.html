@@ -549,7 +549,7 @@ function feuilleData(c,sem,o){
     for(let j=0;j<nC;j++){const v=ct[j]?asm(s,ct[j]):'';cc.push(v);if(v==='ABSENT')miss.push('Contrôle '+(j+1))}
     for(let j=0;j<nE;j++){const v=ex[j]?asm(s,ex[j]):'';cc.push(v);if(v==='ABSENT')miss.push(nE>1?'Examen '+(j+1):'Examen')}
     const any=A.some(a=>num(S.grades[a.id+'_'+s.id])!=null),av=calc(s.id,sem).avg,n=abm[s.id]||0;
-    return[i+1,String(s.last||'').toUpperCase(),s.first||'',mean(s,dv),mean(s,cb),'','',n].concat(cc,[av==null?'':r2(av),feuilleObs(s,any,av,n,miss)])});
+    return[i+1,String(s.last||'').toUpperCase(),s.first||'',mean(s,dv),mean(s,cb),svv(sem,s.id,'p'),svv(sem,s.id,'c'),n].concat(cc,[av==null?'':r2(av),feuilleObs(s,any,av,n,miss)])});
   const n=L.length,semL=sem?'SEMESTRE '+sem.slice(1):'ANNÉE SCOLAIRE',niv=(o.niv||'').trim(),dt=new Date(),p=v=>String(v).padStart(2,'0');
   return{cls:c,cols,rows,
     title:'CLASSE '+c+'  —  '+semL+(niv?'  —  '+niv:'')+'   ('+n+' élève'+(n>1?'s':'')+')',
@@ -612,11 +612,20 @@ function feuillePdf(ms,file){
   x.setTransform(1,0,0,1,0,0);
   dl(file,d.output('arraybuffer'));
 }
+let feuSel=null;
+const svv=(sem,id,k)=>{const o=(S.sv||{})[(sem||'A')+'_'+id];return o&&o[k]!==undefined?o[k]:''};
+function setSv(sem,id,k,v){const key=(sem||'A')+'_'+id,n=parseFloat(String(v).replace(',','.'));S.sv=Object.assign({},S.sv||{});const o=Object.assign({},S.sv[key]||{});if(isNaN(n)||n<0||n>20)delete o[k];else o[k]=n;if(Object.keys(o).length)S.sv[key]=o;else delete S.sv[key];save()}
+function suiviDlg(){
+  const c=$('#fc')?$('#fc').value:'',sem=$('#fp')?$('#fp').value:semDef();
+  if(!c)return toast('Choisissez d’abord une classe');
+  feuSel={c,sem};const L=inCls(c);
+  $('#dlg').innerHTML=`<h2>Participation et comportement</h2><p class="sub" style="margin-bottom:10px">${esc(c)} · ${sem?'Semestre '+sem.slice(1):'Année scolaire'} · notes sur 20. Laissez vide si non évalué. Enregistré automatiquement.</p><div class="tw" style="max-height:52vh;overflow:auto"><table><thead><tr><th>Élève</th><th>Participation</th><th>Comportement</th></tr></thead><tbody>${L.map(s=>`<tr><td>${esc(nmOf(s))}</td>${['p','c'].map(k=>`<td><input type="number" min="0" max="20" step="0.25" inputmode="decimal" style="width:84px" value="${esc(String(svv(sem,s.id,k)))}" oninput="setSv('${sem}','${s.id}','${k}',this.value)"></td>`).join('')}</tr>`).join('')}</tbody></table></div><div style="text-align:end;margin-top:14px"><button class="btn acc" onclick="feuilleDlg()">Retour à la feuille</button></div>`;
+}
 function feuilleDlg(){
   const cl=classes();if(!cl.length)return toast('Aucune classe : ajoutez d’abord des élèves');
   const fs=S.fs||{},cnt={};S.assign.forEach(a=>{if(a.subject)cnt[a.subject]=(cnt[a.subject]||0)+1});
-  const subj=fs.mat||Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0]||'',sd=semDef();
-  $('#dlg').innerHTML=`<h2>Feuille de classe</h2><p class="sub" style="margin-bottom:10px">Même présentation que votre modèle : élèves, suivi en classe, contrôles, examen, moyenne et observations, remplis avec les données de l’application. Participation et Comportement restent vides (à compléter).</p><div class="row"><label>Classe<select id="fc"><option value="">Toutes les classes (une feuille par classe)</option>${opts(cl,cls)}</select></label><label>Période<select id="fp"><option value="S1"${sd==='S1'?' selected':''}>Semestre 1</option><option value="S2"${sd==='S2'?' selected':''}>Semestre 2</option><option value="">Année scolaire</option></select></label></div><div class="row" style="margin-top:8px"><label>Matière<input id="fm" value="${esc(subj)}"></label><label>Enseignant(e)<input id="fe" value="${esc(fs.ens||SIGN)}"></label><label>Niveau (facultatif)<input id="fn" placeholder="ex. 2ème Bac" value="${esc((fs.niv&&fs.niv[cls])||'')}"></label></div><div style="text-align:end;margin-top:14px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="btn ghost" onclick="closeD()">Annuler</button><button class="btn" onclick="feuilleGo('pdf')">PDF</button><button class="btn acc" onclick="feuilleGo('xlsx')">Excel</button></div>`;
+  const subj=fs.mat||Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0]||'',sd=feuSel?feuSel.sem:semDef(),cc0=feuSel?feuSel.c:cls;feuSel=null;
+  $('#dlg').innerHTML=`<h2>Feuille de classe</h2><p class="sub" style="margin-bottom:10px">Même présentation que votre modèle : élèves, suivi en classe, contrôles, examen, moyenne et observations, remplis avec les données de l’application. Participation et Comportement : saisissez-les avec le bouton « Saisir Participation / Comportement ».</p><div class="row"><label>Classe<select id="fc"><option value="">Toutes les classes (une feuille par classe)</option>${opts(cl,cc0)}</select></label><label>Période<select id="fp"><option value="S1"${sd==='S1'?' selected':''}>Semestre 1</option><option value="S2"${sd==='S2'?' selected':''}>Semestre 2</option><option value=""${sd===''?' selected':''}>Année scolaire</option></select></label></div><div class="row" style="margin-top:8px"><label>Matière<input id="fm" value="${esc(subj)}"></label><label>Enseignant(e)<input id="fe" value="${esc(fs.ens||SIGN)}"></label><label>Niveau (facultatif)<input id="fn" placeholder="ex. 2ème Bac" value="${esc((fs.niv&&fs.niv[cc0])||'')}"></label></div><div style="text-align:end;margin-top:14px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="btn ghost" onclick="suiviDlg()">Saisir Participation / Comportement</button><button class="btn ghost" onclick="closeD()">Annuler</button><button class="btn" onclick="feuilleGo('pdf')">PDF</button><button class="btn acc" onclick="feuilleGo('xlsx')">Excel</button></div>`;
   $('#dlg').showModal();
 }
 async function feuilleGo(kind){
