@@ -521,7 +521,7 @@ function stampAsk(){return new Promise(res=>{let d=document.getElementById('stam
   let fin=false;const done=v=>{if(fin)return;fin=true;const mem=$('#stmem').checked;try{d.close()}catch(e){}if(v!==null&&mem)stampSet(v?'always':'never');res(v)};
   $('#stc').onclick=()=>done(null);$('#stn').onclick=()=>done(false);$('#sty').onclick=()=>done(true);d.oncancel=()=>done(null);d.showModal()})}
 /* Cachet : 17 mm, penché de 20° vers la droite, placé juste sous le nom (Pr. …) ou sous le tableau */
-const STAMP_MM=19,STAMP_DEG=15;
+const STAMP_MM=17,STAMP_DEG=20;
 let stampImgP=null;
 function stampImg(){return stampImgP||(stampImgP=new Promise(res=>{const im=new Image();
   im.onload=()=>{try{const N=300,c=document.createElement('canvas');c.width=c.height=N;const x=c.getContext('2d');x.drawImage(im,0,0,N,N);
@@ -666,6 +666,61 @@ async function feuilleGo(kind){
   const f='Feuille_'+(c?slugF(c):'classes')+'_'+(sem||'annee');
   if(kind==='pdf')await feuillePdf(ms,f+'.pdf');else await feuilleXlsx(ms,f+'.xlsx');
 }
+/* ===== PDF : cahier de texte (registre par classe) et emploi du temps à imprimer ===== */
+function signEnd(d,st,bot){const W=d.internal.pageSize.getWidth(),H=d.internal.pageSize.getHeight();let sy=bot+14;if(sy+stampH(st)+8>H){d.addPage();sy=24}
+  d.setFont('helvetica','normal');d.setFontSize(9);d.setTextColor(0,0,0);d.text(SIGN,W-14,sy,{align:'right'});stampAt(d,st,W-14-d.getTextWidth(SIGN)/2,sy+1.5)}
+function pdfPages(d){const n=d.getNumberOfPages(),W=d.internal.pageSize.getWidth(),H=d.internal.pageSize.getHeight();if(n>1)for(let i=1;i<=n;i++){d.setPage(i);d.setFont('helvetica','normal');d.setFontSize(8);d.setTextColor(120,120,120);d.text('Page '+i+'/'+n,W-14,H-6,{align:'right'})}}
+function subjOf(k){const cnt={};S.assign.forEach(a=>{if(a.subject&&(a.cls===k||a.cls==='toutes'))cnt[a.subject]=(cnt[a.subject]||0)+1});return Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0]||(S.fs&&S.fs.mat)||''}
+function ctDef(){const per=$('#ct2').value==='per',a=$('#ct4'),b=$('#ct5');a.disabled=b.disabled=!per;$('#ct3').style.opacity=per?'':'.5';
+  if(per&&!a.value&&!b.value){const c=$('#ct1').value,L=(c?lesOf(c):LS()).filter(l=>l.from);if(L.length){a.value=L.reduce((m,l)=>l.from<m?l.from:m,'9999');b.value=L.reduce((m,l)=>lesTo(l)>m?lesTo(l):m,'')}}}
+function ctDlg(){const cl=[...new Set(LS().map(l=>l.cls))].filter(Boolean).sort();if(!cl.length)return toast('Aucune leçon dans le cahier de texte');
+  $('#dlg').innerHTML=`<h2>Cahier de texte (PDF)</h2><div class="row" style="margin:12px 0"><label>Classe<select id="ct1" onchange="ctDef()"><option value="">Toutes les classes</option>${opts(cl,cl.includes(cls)?cls:'')}</select></label><label>Contenu<select id="ct2" onchange="ctDef()"><option value="all">Cahier entier</option><option value="per">Période : de … à …</option></select></label></div><div class="row" id="ct3" style="margin-bottom:6px"><label>Du<input type="date" id="ct4"></label><label>Au<input type="date" id="ct5"></label></div><p class="sub">Période : les leçons dont les dates touchent cette période sont reprises (les leçons sans date ne sont pas incluses).</p><div style="text-align:end;margin-top:14px;display:flex;gap:8px;justify-content:flex-end"><button class="btn ghost" onclick="closeD()">Annuler</button><button class="btn acc" onclick="ctGo()">Créer le PDF</button></div>`;
+  ctDef();$('#dlg').showModal()}
+function ctGo(){const c=$('#ct1').value,per=$('#ct2').value==='per',a=$('#ct4').value,b=$('#ct5').value;
+  if(per&&!a&&!b)return toast('Choisissez au moins une date');if(per&&a&&b&&b<a)return toast('La date de fin doit suivre le début');
+  closeD();pdfCT(c,per?a:'',per?b:'')}
+async function pdfCT(c,from,to){
+  const J=window.jspdf;if(!J||!J.jsPDF)return toast('Générateur PDF non chargé');
+  const per=!!(from||to),inR=l=>!per||(!!l.from&&(!from||lesTo(l)>=from)&&(!to||l.from<=to)),lf=k=>lesOf(k).filter(inR);
+  const cl=(c?[c]:[...new Set(LS().map(l=>l.cls))].filter(Boolean).sort()).filter(k=>lf(k).length);
+  if(!cl.length)return toast(per?'Aucune leçon sur cette période':'Aucune leçon dans le cahier de texte'+(c?' pour '+c:''));
+  const st=await stampStart();if(st===null)return;
+  const d=new J.jsPDF('l'),W=d.internal.pageSize.getWidth(),yr=S.year||schoolYear();
+  cl.forEach((k,ci)=>{
+    if(ci)d.addPage();
+    d.setDrawColor(0,0,0);d.setLineWidth(.6);d.rect(14,12,W-28,per?31:24);d.setTextColor(0,0,0);d.setFont('helvetica','bold');d.setFontSize(17);d.text('CAHIER DE TEXTE',W/2,22,{align:'center'});
+    d.setFontSize(10);d.text('Classe : '+k,18,31);d.text('Matière : '+subjOf(k),W/2,31,{align:'center'});d.text('Année scolaire : '+yr,W-18,31,{align:'right'});
+    if(per){d.setFont('helvetica','normal');d.text('Période : '+(from?'du '+dateFr(from):'')+(from&&to?' ':'')+(to?'au '+dateFr(to):''),W/2,38,{align:'center'})}
+    const L=lf(k);
+    d.autoTable({startY:per?49:42,head:[['N°','Date','Leçon','Contenu / objectifs','Travail à faire']],
+      body:L.map((l,i)=>{const e=lesTo(l),dt=!l.from?'À planifier':e===l.from?dateFr(l.from):'Du '+dateFr(l.from)+'\nau '+dateFr(e),sn=(l.n||1)>1?'\n('+l.n+' séances)':'',due=(l.hw||'').trim()?hwDueOf(l):'';
+        return[i+1,dt+sn,l.title||'',l.content||'',(l.hw||'')+(due?'\nÀ rendre le '+dateFr(due):'')]}),
+      theme:'grid',styles:{fontSize:9,lineColor:[0,0,0],lineWidth:.2,cellPadding:2.2,textColor:[0,0,0],valign:'top'},
+      headStyles:{fillColor:[217,217,217],textColor:[0,0,0],fontStyle:'bold',halign:'center'},
+      columnStyles:{0:{cellWidth:10,halign:'center'},1:{cellWidth:30},2:{cellWidth:48,fontStyle:'bold'},4:{cellWidth:58}},margin:{left:14,right:14}});
+    signEnd(d,st,d.lastAutoTable.finalY)});
+  pdfPages(d);
+  return dl('cahier-de-texte'+(c?'-'+slugF(c):'')+(per?'-'+(from||'debut')+'_'+(to||'fin'):'')+'.pdf',d.output('arraybuffer'))}
+const EDT_COL=[[221,235,247],[226,240,217],[255,242,204],[252,228,214],[237,226,246],[218,238,236],[255,230,238],[234,238,208],[225,225,240],[243,232,218]];
+async function pdfEDT(){
+  const J=window.jspdf;if(!J||!J.jsPDF)return toast('Générateur PDF non chargé');
+  const T=TT();if(!T.length)return toast('Aucune séance : ajoutez d’abord votre emploi du temps');
+  const st=await stampStart();if(st===null)return;
+  const days=[1,2,3,4,5,6,7].filter(x=>x<6||T.some(t=>t.day===x)),cl=[...new Set(T.map(t=>t.cls))].sort(),
+    slots=[...new Map(T.map(t=>[t.start+'|'+t.end,t])).values()].sort((a,b)=>tmin(a.start)-tmin(b.start)||tmin(a.end)-tmin(b.end)),
+    d=new J.jsPDF('l'),W=d.internal.pageSize.getWidth(),yr=S.year||schoolYear();
+  d.setTextColor(0,0,0);d.setFont('helvetica','bold');d.setFontSize(18);d.text('Emploi du temps',14,17);
+  d.setFont('helvetica','normal');d.setFontSize(10);d.setTextColor(90,90,90);d.text('Année scolaire '+yr,14,24);d.setTextColor(0,0,0);
+  const body=slots.map(sl=>[sl.start+' - '+sl.end].concat(days.map(dy=>T.filter(t=>t.day===dy&&t.start===sl.start&&t.end===sl.end).map(t=>t.cls).join(' / '))));
+  const cw=Math.floor((W-28-32)/days.length);
+  d.autoTable({startY:30,head:[['Horaire'].concat(days.map(x=>JN[x]))],body,theme:'grid',
+    styles:{fontSize:11,halign:'center',valign:'middle',minCellHeight:15,lineColor:[0,0,0],lineWidth:.2,textColor:[0,0,0]},
+    headStyles:{fillColor:[16,48,47],textColor:[255,255,255],fontStyle:'bold'},
+    columnStyles:Object.assign({0:{cellWidth:32,fontStyle:'bold',fillColor:[240,240,240]}},...days.map((_,i)=>({[i+1]:{cellWidth:cw}}))),margin:{left:14,right:14},
+    didParseCell:h=>{if(h.section==='body'&&h.column.index>0){const v=String(h.cell.raw||'');if(v){const i=cl.indexOf(v.split(' / ')[0]);h.cell.styles.fillColor=EDT_COL[i%EDT_COL.length];h.cell.styles.fontStyle='bold'}}}});
+  signEnd(d,st,d.lastAutoTable.finalY);
+  pdfPages(d);
+  return dl('emploi-du-temps.pdf',d.output('arraybuffer'))}
 async function pdfBul(ids,sem){
   const J=window.jspdf;if(!J||!J.jsPDF)return toast('Générateur PDF non chargé');
   const L=(ids||[]).map(id=>S.students.find(s=>s.id===id)).filter(Boolean);if(!L.length)return toast('Sélectionnez au moins un élève');
@@ -927,7 +982,7 @@ function ttCard(){
   const dw=new Date().getDay()||7,cur=sessState().cur,days=[1,2,3,4,5,6,7].filter(d=>d<7||TT().some(x=>x.day===7)),cl=classes();
   return `<div class="card"><h2>Emploi du temps</h2><p class="sub" style="margin-bottom:12px">Ajoutez vos classes et leurs horaires. Pendant une séance, l’onglet Présences choisit automatiquement la classe. Aucune séance n’est proposée les jours de vacances ou fériés du calendrier. Les classes proposées viennent de l’onglet Élèves.</p>`+
   `<div class="row" style="margin-bottom:10px">${[1,2,3,4,5,6,7].map(d=>`<label style="flex-direction:row;align-items:center;gap:4px"><input type="checkbox" class="ttd" value="${d}"> ${JN[d].slice(0,3)}</label>`).join('')}</div>`+
-  `<div class="row"><label>Début<input type="time" id="t2" value="08:00"></label><label>Fin<input type="time" id="t3" value="09:00"></label><label>Classe<select id="t4">${cl.length?'<option value="">Choisir…</option>'+cl.map(c=>`<option value="${esc(c)}"${c===ttLast?' selected':''}>${esc(c)}</option>`).join(''):'<option value="">Aucune classe : ajoutez d’abord des élèves</option>'}</select></label><button class="btn acc" onclick="addTT()">Ajouter</button></div><div class="row" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)"><label>Importer (Excel ou CSV)<input type="file" accept=".xlsx,.xls,.csv,.txt" onchange="pickTT(this)"></label><button class="btn ghost" onclick="ttTpl('xlsx')">Modèle Excel</button><button class="btn ghost" onclick="ttTpl('csv')">Modèle CSV</button></div>`+
+  `<div class="row"><label>Début<input type="time" id="t2" value="08:00"></label><label>Fin<input type="time" id="t3" value="09:00"></label><label>Classe<select id="t4">${cl.length?'<option value="">Choisir…</option>'+cl.map(c=>`<option value="${esc(c)}"${c===ttLast?' selected':''}>${esc(c)}</option>`).join(''):'<option value="">Aucune classe : ajoutez d’abord des élèves</option>'}</select></label><button class="btn acc" onclick="addTT()">Ajouter</button></div><div class="row" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)"><label>Importer (Excel ou CSV)<input type="file" accept=".xlsx,.xls,.csv,.txt" onchange="pickTT(this)"></label><button class="btn ghost" onclick="ttTpl('xlsx')">Modèle Excel</button><button class="btn ghost" onclick="ttTpl('csv')">Modèle CSV</button><button class="btn acc" onclick="pdfEDT()">Emploi du temps (PDF)</button></div>`+
   `<div class="ttgrid" style="margin-top:14px">${days.map(d=>{const L=TT().filter(x=>x.day===d).sort((a,b)=>tmin(a.start)-tmin(b.start));return`<div class="ttcol${d===dw?' today':''}"><b>${JN[d]}</b>${L.length?L.map(x=>`<div class="tts${cur&&cur.id===x.id?' now':''}"><span>${x.start}–${x.end}</span><span class="pill cl">${esc(x.cls)}</span><button class="x" aria-label="Supprimer cette séance" onclick="delTT('${x.id}')">×</button></div>`).join(''):'<span class="sub">—</span>'}</div>`}).join('')}</div></div>`;
 }
 let ttLast='';
@@ -1064,7 +1119,7 @@ function lcard(l,o){o=o||{};const st=lesState(l),ex=lesEx(l),pool=S.students.fil
 function ctView(){
   const all=LS().filter(l=>!cls||l.cls===cls),t=today(),items=todayItems().filter(x=>!cls||x.cls===cls),late=all.filter(l=>lesState(l)==='late').sort(lesSort),done=all.filter(l=>l.done).length,tot=all.length,now=all.filter(l=>lesState(l)==='now').length;
   const kp=(ic,v,l,x)=>`<div class="kpi"><span class="kic">${ic}</span><b>${v}</b><span class="kl">${l}</span>${x||''}</div>`;
-  return head('Cahier de texte','Programme de l’année, leçon du jour selon l’emploi du temps et exercices',`<div class="row">${clsPick('Toutes les classes')}<button class="btn acc" onclick="lesForm()">Nouvelle leçon</button><button class="btn ghost" onclick="planDlg()">Planifier selon l’emploi du temps</button><button class="btn ghost" onclick="hwDlg()">Devoirs → Moodle (HTML)</button><button class="btn del" onclick="delPlan()">Supprimer le planning de la classe</button></div>`)+
+  return head('Cahier de texte','Programme de l’année, leçon du jour selon l’emploi du temps et exercices',`<div class="row">${clsPick('Toutes les classes')}<button class="btn acc" onclick="lesForm()">Nouvelle leçon</button><button class="btn ghost" onclick="planDlg()">Planifier selon l’emploi du temps</button><button class="btn ghost" onclick="hwDlg()">Devoirs → Moodle (HTML)</button><button class="btn ghost" onclick="ctDlg()">Cahier de texte (PDF)</button><button class="btn del" onclick="delPlan()">Supprimer le planning de la classe</button></div>`)+
   `<div class="kpis">${kp('📖',tot,'leçons')}${kp('✅',done+'/'+tot,'faites',`<div class="bar"><i style="width:${tot?Math.round(done/tot*100):0}%"></i></div>`)}${kp('⏳',now,'en cours')}${kp('⚠️',late.length,'en retard')}</div>`+
   `<div class="card"><h2>Aujourd’hui (${dateFr(t)})</h2>${items.length?items.map(x=>x.l?lcard(x.l,{times:x.times,next:x.next}):`<div class="lcard none"><span class="pill cl">${esc(x.cls)}</span> <span class="tag">🕘 Séance ${x.times.join(', ')}</span><p class="sub" style="margin:6px 0 8px">Aucune leçon planifiée pour cette classe.</p><button class="btn sm acc" onclick="lesForm('','${esc(x.cls)}')">Nouvelle leçon</button></div>`).join(''):'<p class="empty">'+(TT().length?'Aucune séance aujourd’hui (ou jour férié / vacances).':'Aucune leçon en cours aujourd’hui. Ajoutez vos séances dans Calendrier → Emploi du temps pour voir la leçon de chaque classe automatiquement.')+'</p>'}</div>`+
   (late.length?`<div class="card"><h2>En retard : à valider ou à replanifier (${late.length})</h2>${late.slice(0,8).map(l=>lcard(l)).join('')}${late.length>8?'<p class="sub">… et '+(late.length-8)+' autre(s) dans le planning ci-dessous.</p>':''}</div>`:'')+
